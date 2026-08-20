@@ -17,7 +17,8 @@ description: >
 - **Members DB** (신원 매핑의 source of truth, 팀 공용):
   `https://app.notion.com/p/197a773e7c13408d94bc028ba98359f2`
   - 데이터 소스: `collection://7462e098-60f7-463d-9b47-a8250cf7536f`
-  - 속성: `Name`(title), `Email`, `GitHub`, `Linear`(Linear 표시 이름), `Notion`(person), `Role`(Leader/Member), `Match Status`
+  - 속성: `Name`(title), `Email`, `Calendar Email`(구글 캘린더 초대용 — 2026-08-20 추가), `GitHub`, `Linear`(Linear 표시 이름), `Notion`(person), `Role`(Leader/Member), `Match Status`
+  - 서비스별로 쓰는 이메일이 다를 수 있다 (예: Overleaf는 또 다름). **캘린더 초대에는 `Calendar Email`을 쓰고, 비어 있으면 `Email`로 폴백**한다. 다른 서비스용 이메일이 필요해지면 같은 방식으로 속성을 추가한다.
 - **SimDROID 프로젝트 멤버가 기록되는 곳**:
   - Notion: 프로젝트 페이지 `https://app.notion.com/p/398fcd884f9a809a81dbe02434c1fd9c` 의 `Person` 속성
   - Linear: 프로젝트 `SimDROID` (id `cc005489-12aa-4d19-adc8-e6e4da621254`, 팀 `Research 3: Physical AI`)의 members
@@ -26,14 +27,14 @@ description: >
 
 SimDROID 참여 멤버:
 
-| Name | Email (초대용) | Notion user | Linear user id |
-|---|---|---|---|
-| Sungwoong Kim (김성웅, Lead) | sukim96@snu.ac.kr | `user://2e9d872b-594c-81eb-b915-0002b3a12dd6` | `12f666b4-230c-4e2d-873a-108fa086b7f6` |
-| Jehyun Park (박제현) | jaheon555@g.skku.edu | `user://a193deca-4692-48e0-a03d-f9903a860b7e` | `9645aebc-8b6c-4f2d-b5c2-61261e275ba7` |
-| Jaemin Lee (이재민) | jmsmlove02@snu.ac.kr | `user://f8df8a6d-d122-46bf-bd84-c2f8911496b3` | `77df427f-bd27-43f6-8041-929cf86c0942` |
-| Sangjun Park (박상준) | sangjunpark@umass.edu | `user://373d872b-594c-8116-b4af-0002fbe64a3d` | `8b133268-47d3-4f48-812d-c93f93795108` |
-| Jihun Moon (문지훈) | mnjihun@snu.ac.kr | `user://a969b1cd-d88d-4b3e-98aa-cff3037c4b77` | `b5346543-c382-407b-88a0-d82fe780a8ff` |
-| Hoseok Lee (이호석) | hslee0324@snu.ac.kr | `user://a307f342-b5e5-4f5c-834f-3142d6946323` | `f2b835e5-9ee7-4a96-9a63-29e717ad3706` |
+| Name | Calendar Email (초대용) | Email | Notion user | Linear user id |
+|---|---|---|---|---|
+| Sungwoong Kim (김성웅, Lead) | sukim96@snu.ac.kr | sukim96@snu.ac.kr | `user://2e9d872b-594c-81eb-b915-0002b3a12dd6` | `12f666b4-230c-4e2d-873a-108fa086b7f6` |
+| Jehyun Park (박제현) | jaheon555@snu.ac.kr | jaheon555@g.skku.edu | `user://a193deca-4692-48e0-a03d-f9903a860b7e` | `9645aebc-8b6c-4f2d-b5c2-61261e275ba7` |
+| Jaemin Lee (이재민) | jmsmlove02@snu.ac.kr | jmsmlove02@snu.ac.kr | `user://f8df8a6d-d122-46bf-bd84-c2f8911496b3` | `77df427f-bd27-43f6-8041-929cf86c0942` |
+| Sangjun Park (박상준) | 06park.sangjun@gmail.com | sangjunpark@umass.edu | `user://373d872b-594c-8116-b4af-0002fbe64a3d` | `8b133268-47d3-4f48-812d-c93f93795108` |
+| Jihun Moon (문지훈) | (없음 — Email 폴백) | mnjihun@snu.ac.kr | `user://a969b1cd-d88d-4b3e-98aa-cff3037c4b77` | `b5346543-c382-407b-88a0-d82fe780a8ff` |
+| Hoseok Lee (이호석) | hslee0324@snu.ac.kr | hslee0324@snu.ac.kr | `user://a307f342-b5e5-4f5c-834f-3142d6946323` | `f2b835e5-9ee7-4a96-9a63-29e717ad3706` |
 
 2026-08-20 기준 양측 불일치 (동기화 필요 시 참고):
 
@@ -41,10 +42,7 @@ SimDROID 참여 멤버:
 - **문지훈**: Notion·Linear에는 있으나 정기 미팅 캘린더 초대에는 빠져 있음.
 - 정기 미팅 캘린더 초대에 Members DB에 없는 `jm.park@kaist.ac.kr` 가 포함되어 있다 (외부 협력자로 추정) — 자동 처리 대상이 아니며, 초대 목록 변경 시 사용자에게 확인한다.
 
-주의: 일부 멤버는 Linear 계정·캘린더 이메일이 Members 테이블의 Email과 다르다. **캘린더 초대 등 이메일이 필요한 곳에는 항상 Members DB의 `Email` 값을 쓴다** (Linear 계정 이메일 사용 금지). 확인된 차이:
-
-- 박제현: Linear 계정·기존 캘린더 초대는 `jaheon555@snu.ac.kr`, Members DB는 `jaheon555@g.skku.edu`.
-- 박상준: 기존 캘린더 초대는 `06park.sangjun@gmail.com`, Members DB는 `sangjunpark@umass.edu`.
+주의: 일부 멤버는 서비스마다 쓰는 이메일이 다르다 (박제현·박상준). **캘린더 초대에는 Members DB의 `Calendar Email`을 쓰고, 비어 있으면 `Email`을 쓴다** (Linear 계정 이메일 사용 금지). `Calendar Email` 값은 실제 초대 수신/수락 이력이 근거이며, 박상준의 `06park.sangjun@gmail.com`은 아직 수락 전(2026-08-20)이라 본인 확인이 안 된 상태다 — 초대가 계속 무응답이면 본인에게 확인하고 DB와 이 표를 갱신한다.
 
 ## 사용 규칙
 
@@ -57,7 +55,7 @@ SimDROID 참여 멤버:
 
 ### Google Calendar 초대
 
-- SimDROID 관련 미팅 이벤트에는 **참여 멤버 전원**을 attendees로 포함한다 (위 표의 Email 컬럼, 재조회했다면 Members DB의 Email).
+- SimDROID 관련 미팅 이벤트에는 **참여 멤버 전원**을 attendees로 포함한다 (위 표의 Calendar Email 컬럼, 재조회했다면 Members DB의 `Calendar Email` → 없으면 `Email`).
 - 일부만 초대하라는 명시적 요청이 있을 때만 예외.
 
 ### 멤버 동기화 (한쪽에 추가되면 다른쪽에도)
@@ -78,7 +76,7 @@ SimDROID 참여 멤버:
 전체 멤버 재조회가 필요할 때:
 
 ```sql
-SELECT "Name", "Email", "Linear", "Notion", "Role", "Match Status"
+SELECT "Name", "Email", "Calendar Email", "Linear", "Notion", "Role", "Match Status"
 FROM "collection://7462e098-60f7-463d-9b47-a8250cf7536f"
 ```
 

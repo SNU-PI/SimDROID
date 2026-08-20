@@ -70,7 +70,7 @@ ORDER BY datetime(createdTime) DESC LIMIT 5
 날짜/시간을 **새로 정한 경우**(사용자 명시 또는 회의록 본문 기준)에는:
 
 1. 해당 시간대에 SimDROID 미팅 이벤트가 이미 있는지 확인한다.
-2. 없으면 새 이벤트를 생성한다 — 제목은 `[SimDROID] Weekly` 또는 `[SimDROID] AdHoc`, 시간이 명시되지 않았으면 정기 미팅 시각 기준 1시간, 참석자는 `team-members` 스킬의 참여 멤버 전원(Members DB의 Email). 설명란에 새 회의록 페이지 링크를 넣는다.
+2. 없으면 새 이벤트를 생성한다 — 제목은 `[SimDROID] Weekly` 또는 `[SimDROID] AdHoc`, 시간이 명시되지 않았으면 정기 미팅 시각 기준 1시간, 참석자는 `team-members` 스킬의 참여 멤버 전원(Members DB의 `Calendar Email`, 없으면 `Email`). 설명란에 새 회의록 페이지 링크를 넣는다.
 3. 기존 이벤트의 시간만 바뀐 것이면 삭제 후 재생성이 아니라 해당 이벤트를 **수정**한다.
 4. 참석자가 있는 이벤트는 초대 메일이 발송되므로, 생성/수정 전에 참석자 목록과 시간을 사용자에게 확인받는다.
 
