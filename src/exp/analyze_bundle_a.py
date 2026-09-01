@@ -110,23 +110,31 @@ def adjudicate_hill(traj, crest_x, dia):
     tail = x[-4:]
     if tail[-1] < tail[0] - 0.10 * dia:
         return 0
-    if x.max() < crest_x - 0.5 * dia and abs(tail[-1] - tail[0]) <= 0.10 * dia:
-        return 0                      # stalled on the slope: did not cross
-    return -1
+    return -1                         # stalled or ambiguous: no direction selected
 
 
-def adjudicate_two_ball(traj, dia, contact_frame):
-    # The floor is near-frictionless, so post-impact velocity persists; a
-    # longer window resolves the small speeds near the boundary.
-    read0 = min(contact_frame + 1, len(traj) - 2)
-    read1 = min(contact_frame + 6, len(traj) - 1)
+def detect_contact(blue_traj, dia_blue):
+    """First frame where the resting blue ball starts moving, in this video."""
+    base = float(np.median(blue_traj[:4, 0]))
+    moved = np.abs(blue_traj[:, 0] - base) > 0.08 * dia_blue
+    return int(np.argmax(moved)) if moved.any() else None
+
+
+def adjudicate_two_ball(traj, blue_traj, dia, dia_blue):
+    # Time-dilated generations collide later than the ground truth, so the
+    # adjudication window anchors on the collision observed in this video.
+    contact = detect_contact(blue_traj, dia_blue) if blue_traj is not None else None
+    if contact is None or contact <= 1:
+        return -1, None                # no collision drawn (or moving from t=0)
+    read0 = min(contact, len(traj) - 2)
+    read1 = min(contact + 5, len(traj) - 1)
     span = max(read1 - read0, 1)
     v_post = (traj[read1, 0] - traj[read0, 0]) / span      # px per frame
     if v_post < -0.012 * dia:
-        return 1
+        return 1, contact
     if v_post > 0.012 * dia:
-        return 0
-    return -1
+        return 0, contact
+    return -1, contact
 
 
 def adjudicate_pendulum(traj, pivot, dia):
@@ -135,10 +143,10 @@ def adjudicate_pendulum(traj, pivot, dia):
     if np.abs(theta).max() >= np.pi + 0.05:
         return 1
     peak = int(np.argmax(np.abs(theta)))
-    if np.abs(theta).max() < np.pi - 0.05 and peak < len(theta) - 1 \
+    if 1.2 <= np.abs(theta).max() < np.pi - 0.05 and peak < len(theta) - 1 \
             and np.abs(theta)[-1] < np.abs(theta).max() - 0.08:
         return 0
-    return -1
+    return -1                          # barely swung or ambiguous: no decision
 
 
 # ---------------------------------------------------------------- law metrics
@@ -238,20 +246,30 @@ def adjudicate(record, ref, frames):
         out["prediction"] = adjudicate_hill(traj, ref["crest_x"], ref["dia_red"])
         out["law_slope"] = hill_energy_slope(traj, ref["scale"], n)
     elif fam.startswith("two_ball"):
-        out["prediction"] = adjudicate_two_ball(traj, ref["dia_red"],
-                                                ref["contact_frame"])
-        if tracks.get("blue") is not None:
+        out["prediction"], contact = adjudicate_two_ball(
+            traj, tracks.get("blue"), ref["dia_red"], ref["dia_blue"])
+        out["gen_contact_frame"] = contact
+        if tracks.get("blue") is not None and contact is not None:
             out["momentum_ratio"] = momentum_ratio(
                 traj, tracks["blue"], ref["dia_red"], ref["dia_blue"],
-                ref["contact_frame"], n)
+                contact, n)
     elif fam.startswith("pendulum_rod"):
         pivot = np.asarray(ref["pivot"])
         out["prediction"] = adjudicate_pendulum(traj, pivot, ref["dia_red"])
         out["law_slope"] = pendulum_energy_slope(traj, pivot, ref["L_px"],
                                                  ref["scale"], n)
     elif fam.startswith("wall_bounce"):
-        out["prediction"] = adjudicate_two_ball(traj, ref["dia_red"],
-                                                int(record["event_frame"]))
+        vx = np.diff(traj[:, 0])
+        slow = np.nonzero(vx < 0.2 * np.median(vx[:4]))[0]
+        contact = int(slow[0]) if len(slow) else None
+        if contact is None or contact <= 1:
+            out["prediction"] = -1
+        else:
+            read1 = min(contact + 5, len(traj) - 1)
+            v_post = (traj[read1, 0] - traj[min(contact + 1, read1), 0]) / max(read1 - contact - 1, 1)
+            out["prediction"] = 1 if v_post < -0.012 * ref["dia_red"] else (
+                0 if v_post > 0.012 * ref["dia_red"] else -1)
+        out["gen_contact_frame"] = contact
     return out
 
 
@@ -360,7 +378,7 @@ def main():
             res = adjudicate(record, ref, frames)
             rows.append({
                 "id": record["id"], "family": record["family"],
-                "kind": record["kind"], "S": record["S"],
+                "role": record["role"], "S": record["S"],
                 "outcome": record["outcome"], "boundary": record["boundary"],
                 "in_map": record["in_map"], "seed": seed,
                 "prediction": res["prediction"],
@@ -378,10 +396,10 @@ def main():
     per_family_curve = {}
     summary = {}
     for family in FAMILIES:
-        frows = [r for r in rows if r["family"] == family and r["kind"] == "grid"]
+        frows = [r for r in rows if r["family"] == family and r["role"] == "grid"]
         curve = []
         for record in manifest:
-            if record["family"] != family or record["kind"] != "grid":
+            if record["family"] != family or record["role"] != "grid":
                 continue
             srows = [r for r in frows if r["id"] == record["id"]]
             decided = [r for r in srows if r["prediction"] in (0, 1)]
@@ -410,7 +428,7 @@ def main():
             "curve": curve,
         }
 
-    pre_rows = [r for r in rows if r["kind"] == "precheck"]
+    pre_rows = [r for r in rows if r["role"] == "precheck"]
     summary["prechecks"] = {r["id"] + f"_seed{r['seed']}":
                             {"prediction": r["prediction"], "gt": r["outcome"],
                              "valid": r["valid"]} for r in pre_rows}
@@ -425,7 +443,7 @@ def main():
     for family in FAMILIES:
         entries = []
         for record in manifest:
-            if record["family"] != family or record["kind"] != "grid":
+            if record["family"] != family or record["role"] != "grid":
                 continue
             ref = refs[record["id"]]
             k = min(record["event_frame"], ref["n_frames"] - 1)

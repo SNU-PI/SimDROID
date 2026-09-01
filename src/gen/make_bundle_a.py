@@ -102,7 +102,7 @@ def family_preview(path: Path, name, entries):
     canvas.save(path)
 
 
-def build_sample(name, cls, sample_id, S, params, root: Path, kind="grid"):
+def build_sample(name, cls, sample_id, S, params, root: Path, role="grid"):
     frames, labels = roll(cls, params, cls.cam, DIAG_CFG)
     if S is not None and abs(cls.S_of(params) - S) > 1e-9:
         raise RuntimeError(f"{sample_id}: S inversion mismatch")
@@ -142,7 +142,10 @@ def build_sample(name, cls, sample_id, S, params, root: Path, kind="grid"):
     (root / "conditions" / f"{sample_id}.txt").write_text(prompt)
 
     record = {
-        "id": sample_id, "principle": PRINCIPLE, "family": name, "kind": kind,
+        "id": sample_id, "principle": PRINCIPLE, "family": name,
+        # "kind" follows the cosmos_v2w_sweep contract: dynamic = 5-frame video
+        # conditioning ("grid" here once silently fell through to image mode).
+        "kind": "dynamic", "role": role,
         "S": S, "margin": float(labels["margin"]),
         "params": {k: float(v) for k, v in params.items()},
         "outcome": int(labels["outcome"]),
@@ -204,14 +207,14 @@ def main():
         pre_hill_cls, pre_hill_kw = PRECHECKS["hill_roll_pre"]
         record, _ = build_sample("hill_roll", pre_hill_cls, "hill_roll_pre",
                                  None, pre_hill_cls.params_for_S(pre_hill_kw["S"]),
-                                 root, kind="precheck")
+                                 root, role="precheck")
         record["S"] = pre_hill_kw["S"]
         records.append(record)
         print(f"hill_roll_pre: y={record['outcome']} ev={record['event_frame']}")
         wall_cls, _ = PRECHECKS["wall_bounce_pre"]
         record, _ = build_sample("wall_bounce_pre", wall_cls, "wall_bounce_pre",
                                  None, dict(v0=wall_cls.V0), root,
-                                 kind="precheck")
+                                 role="precheck")
         records.append(record)
         print(f"wall_bounce_pre: y={record['outcome']} ev={record['event_frame']}")
 
