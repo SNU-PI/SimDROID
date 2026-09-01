@@ -41,6 +41,9 @@ DYNAMIC = ("hill", "collide", "domino")
 # artifacts remain stable.  These scenes share a dimensionless energy margin.
 ENERGY_FAMILIES = {"hill": EnergyHill, "ramp": Ramp, "pendulum": Pendulum}
 
+# Bundle A (threshold_scene_spec): contact-rich direction-selection scenes on
+# a shared saturation axis S; registered lazily in gen/bundle_a_spec.py.
+
 
 def sample_params(family, rng):
     """Draw one episode's parameters, spread across the family's threshold."""
