@@ -6,6 +6,8 @@ and the rollout loop that settles the scene, captures frames, and hands the
 trace to the scene's own labelling code.
 """
 
+import os
+
 import numpy as np
 import mujoco
 
@@ -116,7 +118,12 @@ class Base:
             else:
                 raise RuntimeError("renderer kept producing black frames")
         self._r.update_scene(self.data, camera=self.cam)
-        return self._r.render()
+        frame = self._r.render()
+        # OSMesa returns the framebuffer bottom-up relative to the EGL path
+        # (verified 2026-09-02 against an EGL reference frame); make both upright.
+        if os.environ.get("MUJOCO_GL", "").lower() == "osmesa":
+            frame = frame[::-1].copy()
+        return frame
 
     def run(self, p, render=False):
         """Returns dict with margin, outcome, event_frame, frames, trace."""
