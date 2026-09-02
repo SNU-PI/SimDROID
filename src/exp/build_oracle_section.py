@@ -94,8 +94,8 @@ def main(src, dst):
 
     # ---- figure
     fig, axes = plt.subplots(1, 3, figsize=(11.4, 3.3), dpi=170, sharey=True)
-    arms = (("neutral", "neutral prompt", SUB, "o", -0.045), ("return", "prompt: returns", BLUE, "v", 0.0),
-            ("pass", "prompt: passes", ACCENT, "^", 0.045))
+    arms = (("neutral", "neutral prompt", SUB, "o", -0.03), ("return", "prompt: returns", BLUE, "v", 0.0),
+            ("pass", "prompt: passes", ACCENT, "^", 0.03))
     for ax, (fam, label) in zip(axes, FAMS):
         ax.plot([0.44, 1, 1, 1.56], [0, 0, 1, 1], color=BLUE, lw=1.2, alpha=.45, zorder=1)
         ax.axvline(1.0, color=LINE, lw=1)
