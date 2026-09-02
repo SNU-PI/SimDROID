@@ -62,7 +62,11 @@ def franka_blocks(pos=FRANKA_POS):
 
 
 def wb_body(tape_y=0.17, tape_half=0.60):
+    # Extra cameras for multi-view consumers (VERA's 3-view canvas): an elevated
+    # three-quarter view and a near-top view; the scene's own side camera stays primary.
     return f"""
+    <camera name="wb_iso" fovy="28" pos="-1.25 -1.45 0.80" zaxis="-1.25 -1.45 0.75"/>
+    <camera name="wb_top" fovy="36" pos="0 -0.55 1.65" zaxis="0 -0.55 1.60"/>
     <geom name="backwall" type="box" size="2.6 0.05 0.9" pos="0 1.65 0.9" material="wallpaint" contype="0" conaffinity="0"/>
     <geom name="tape" type="box" size="{tape_half} 0.012 0.0008" pos="0 {tape_y} 0.0008" material="tape" contype="0" conaffinity="0"/>
     <geom name="tray" type="box" size="0.14 0.10 0.015" pos="-0.90 0.62 0.015" material="steel" contype="0" conaffinity="0"/>
