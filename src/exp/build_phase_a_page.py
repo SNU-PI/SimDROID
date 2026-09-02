@@ -147,7 +147,9 @@ def main(analysis_dir, dst):
     if vera:
         vrows_vera = ""
         for fam, v in vera.items():
-            cells = " ".join(f'{("S=" + f"{s["S"]:.2f}") if s["S"] is not None else ("v0=" + f"{s["v0"]:.2f}")}: {s["gt"]}→<b>{s["pred"]}</b>' for s in v["per_sample"])
+            def _lab(smp):
+                return f"S={smp['S']:.2f}" if smp["S"] is not None else f"v0={smp['v0']:.2f}"
+            cells = " ".join(f"{_lab(smp)}: {smp['gt']}→<b>{smp['pred']}</b>" for smp in v["per_sample"])
             vrows_vera += f'<tr><td>{fam}</td><td class="num">{v["n"]}</td><td class="num">{pct(v["accuracy"])}</td><td class="num">{pct(v["undecided"])}</td><td class="num">{pct(v["valid_frac"])}</td><td class="small">{cells}</td></tr>\n'
         vera_block = f"""<div class="tbl-wrap"><table>
     <tr><th>가족</th><th class="num">n</th><th class="num">정확도</th><th class="num">미결</th><th class="num">valid_frac</th><th>샘플별 GT→예측 (1=통과/반전/계속)</th></tr>
