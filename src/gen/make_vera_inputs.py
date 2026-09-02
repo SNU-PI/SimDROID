@@ -41,15 +41,23 @@ def to_view(frames):
 def build(name, cls, params, sample_id, root, S=None, role="grid", v0=None):
     n = CTX + N_CHUNKS * CHUNK
     cams = [cls.cam, "wb_iso", "wb_top"]
-    views, labels = roll_views(cls, params, cams, CFG, n_frames=n)
-    if int(labels["event_frame"]) <= CTX - 1:
+    if (root / f"{sample_id}.npz").exists():
+        # Rendered already: recover the physics record without rendering.
+        scene = cls()
+        scene.capture_dt = CFG.capture_dt
+        scene.n_frames = n
+        labels = scene.run(params, render=False)
+    else:
+        views, labels = roll_views(cls, params, cams, CFG, n_frames=n)
+        canvas = np.concatenate([to_view(views[c]) for c in cams], axis=2)   # [T,128,576,3]
+        side = views[cls.cam]
+        np.savez_compressed(root / f"{sample_id}.npz", canvas=canvas, side_view=to_view(side),
+                            ctx_frames=CTX, chunk_frames=CHUNK, capture_hz=CAPTURE_HZ)
+        write_video(root / f"{sample_id}_side.mp4", side, CFG)
+        write_video(root / f"{sample_id}_canvas.mp4", canvas, CFG)
+    # The control family has no event (its event_frame marks the horizon end).
+    if role != "control" and int(labels["event_frame"]) <= CTX - 1:
         raise RuntimeError(f"{sample_id}: event inside the 29-frame context (frame {labels['event_frame']})")
-    canvas = np.concatenate([to_view(views[c]) for c in cams], axis=2)       # [T,128,576,3]
-    side = views[cls.cam]
-    np.savez_compressed(root / f"{sample_id}.npz", canvas=canvas, side_view=to_view(side),
-                        ctx_frames=CTX, chunk_frames=CHUNK, capture_hz=CAPTURE_HZ)
-    write_video(root / f"{sample_id}_side.mp4", side, CFG)
-    write_video(root / f"{sample_id}_canvas.mp4", canvas, CFG)
     rec = {"id": sample_id, "family": name, "role": role, "S": S, "v0": v0,
            "outcome": int(labels["outcome"]), "event_frame": int(labels["event_frame"]),
            "t_event_s": int(labels["event_frame"]) / CAPTURE_HZ, "decided": bool(labels["decided"]),
