@@ -36,7 +36,7 @@ def main(src, dst, n_seeds):
     wall_pre_ok = sum(v["prediction"]==v["gt"] for v in wall_pre)
 
     # ---------- hero patches ----------
-    html, n = re.subn(r"씬 리뷰 — Cosmos 실행 전", "평가 결과 보고 · 2026-09-01", html); assert n==1, "eyebrow"
+    html, n = re.subn(r"씬 리뷰 — Cosmos 실행 전", "평가 결과 보고 · 2026-09-02", html); assert n==1, "eyebrow"
     html, n = re.subn(
         r"MuJoCo 사전 검사\(§2\.5\)는 전부 통과했고,\s*\n\s*Cosmos 발사는 이 페이지의 피드백을 받은 뒤 진행한다\.",
         f"MuJoCo 사전 검사(§2.5) 전부 통과 후 Cosmos 평가까지 실행했다 — 중립 프롬프트, "
@@ -62,7 +62,7 @@ def main(src, dst, n_seeds):
                             f'<p class="cap">{label} — 각 행이 S 격자 한 점(위→아래로 S 증가), 첫 열이 GT, 이후 열이 seed별 생성 결과 (사건 프레임 t_event 시점). 칸 위 표기 1=통과·0=반환·?=미결.</p>\n')
 
     fitP_txt = f'PSE≈{fitP["PSE"]:.2f}, 기울기 k≈{fitP["slope"]:.0f}' if fitP else "적합 불가"
-    fitT_txt = ("평탄 — 문턱 없음" if (not fitT or fitT["slope"] < 1.0)
+    fitT_txt = ("평탄 — 문턱 없음" if (not fitT or fitT["slope"] < 1.0 or not (0.45 < fitT["PSE"] < 2.0))
                 else f'PSE≈{fitT["PSE"]:.2f}, k≈{fitT["slope"]:.1f}')
 
     new = f"""<section>
@@ -71,7 +71,7 @@ def main(src, dst, n_seeds):
     <dt>모델</dt><dd>nvidia/Cosmos-Predict2-2B-Video2World · model-480p-16fps.pt · diffusers 0.35.1 (Cosmos2VideoToWorldPipeline)</dd>
     <dt>샘플링</dt><dd>21프레임(1.3125 s) · 35 steps · guidance 7.0 · fps 16 · 중립 프롬프트 + 표준 negative</dd>
     <dt>조건</dt><dd>프레임 0–4 (5프레임 비디오 컨디셔닝) — 롤아웃 초반이 조건 구간과 픽셀 일치함을 전 씬에서 확인</dd>
-    <dt>규모</dt><dd>35행(33 격자 + 2 사전검사) × {n_seeds} seed = {n_total} 롤아웃 · 실측 ~15 s/롤아웃 (H200 1장, 총 ~3.5 h)</dd>
+    <dt>규모</dt><dd>35행(33 격자 + 2 사전검사) × {n_seeds} seed = {n_total} 롤아웃 · 실측 ~14 s/롤아웃 (H200 1장, 총 ~3.3 h; 수집 2026-09-01, 판독 09-02)</dd>
     <dt>판정</dt><dd>21프레임 마스크 궤적 기반(마지막 프레임 단독 판정 아님) · GT 자가검증 34/35 후 동결 (유일 미결정 = S=1.00 나이프에지) · 등속 인코더 기준선 병기</dd>
   </div>
   <p class="small muted">실행 노트: 발사 직전 점검에서 러너의 컨디셔닝 계약(manifest <span class="mono">kind=="dynamic"</span>일 때만
@@ -102,7 +102,8 @@ def main(src, dst, n_seeds):
     <p>접촉 시점 국재화는 정상(파란 공이 GT와 같은 프레임대에 움직이기 시작)이나, 그 직후 운동량 전달이 붕괴한다 —
     GT는 Σmv 비 0.98–1.00, 생성은 평균 {T["momentum_mean"]:+.2f}. 전형 패턴은 충돌 후 두 공이 유착·정체.
     방향 판정 정확도 {pct(T["acc_nonboundary"])}는 기준선 {pct(T["encoder_acc"])}보다도 낮다(질량비와 무관한 잡음성 반응).
-    결정 곡선은 {fitT_txt}.</p>
+    결정 곡선은 {fitT_txt}. 질량비 이전의 문제다: 판단 요소가 없는 <b>A2-0 탄성벽 사전검사에서도 {len(wall_pre)} seed 중 {wall_pre_ok}건만 반동</b>했다 —
+    접촉 후 반동·운동량 전달 자체를 거의 그리지 않는다.</p>
   </div>
   <div class="card">
     <div class="card-head"><span class="scene-id">A3</span><h2>강체 진자 — 문턱은 있으나 자리가 틀렸다</h2><span class="law">{fitP_txt} (GT 1.00)</span></div>
@@ -181,7 +182,7 @@ def main(src, dst, n_seeds):
     html, n = re.subn(r'<section>\s*<div class="sec-head"><span class="n">06</span>.*?</section>',
                       new.strip(), html, flags=re.S); assert n==1, "sec06 splice"
     html, n = re.subn(r"· 2026-09-01 · 문지훈/Claude",
-                      f"· 판독 <span class=\"mono\">artifacts/bundle_a/analysis/</span> · 2026-09-01 씬 구현+평가 완료 · 문지훈/Claude", html); assert n==1, "footer"
+                      f"· 판독 <span class=\"mono\">artifacts/bundle_a/analysis/</span> · 2026-09-01 씬 구현·Cosmos 수집 · 09-02 전체 판독 · 문지훈/Claude", html); assert n==1, "footer"
     Path(dst).write_text(html)
     print(f"OK -> {dst}  ({len(html)/1e6:.2f} MB)")
 
