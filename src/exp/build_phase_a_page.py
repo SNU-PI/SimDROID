@@ -143,6 +143,28 @@ def main(analysis_dir, dst):
         if p.exists():
             prev[fam] = b64img(p, scale=0.6, quality=78)
 
+    # ---- VERA strips (GT vs generated side view), a few representative samples
+    def vera_strip(sid, seed=1):
+        gp, rp = ROOT / "phase_a/vera" / f"{sid}.npz", ROOT / f"phase_a/vera_out/seed_{seed:02d}" / sid / "rollout.npz"
+        if not (gp.exists() and rp.exists()):
+            return None
+        gt = np.load(gp)["side_view"]; gen = np.load(rp)["side_view"]
+        idx = [28, 40, 52, 64, 76, 88, 100]
+        row_gt = np.concatenate([gt[min(i, len(gt) - 1)] for i in idx], axis=1)
+        row_gen = np.concatenate([gen[min(i, len(gen) - 1)] for i in idx], axis=1)
+        strip = np.concatenate([row_gt, row_gen], axis=0)
+        im = Image.fromarray(strip).resize((strip.shape[1] * 2, strip.shape[0] * 2), Image.NEAREST)
+        buf = io.BytesIO(); im.save(buf, format="JPEG", quality=82)
+        return base64.b64encode(buf.getvalue()).decode()
+    strips_html = ""
+    for sid, lab in (("hill_roll_wb_02", "A1 S=0.79 (GT: 반환)"), ("hill_roll_wb_06", "A1 S=1.05 (GT: 통과)"),
+                     ("two_ball_wb_02", "A2 S=0.79 (GT: 직진)"), ("two_ball_wb_08", "A2 S=1.26 (GT: 반전)"),
+                     ("kin_roll_03", "P0 v0=0.75"), ("wall_bounce_wb_pre", "A2-0 벽 반동")):
+        b = vera_strip(sid)
+        if b:
+            strips_html += (f'<div class="media scroll"><img src="data:image/jpeg;base64,{b}" alt="{lab} GT vs VERA"></div>'
+                            f'<p class="cap">{lab} — 위 GT, 아래 VERA(seed 1). 열 = 프레임 28(문맥 끝)·40·52·64·76·88·100 (100 Hz 캡처 = 0.28–1.0 s).</p>\n')
+
     # ---- VERA block
     if vera:
         vrows_vera = ""
@@ -237,7 +259,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:26px;line-height:1.7}}
   <p>Wan2.1-I2V-14B 기반 DROID 비디오 planner(공개 체크포인트)를 추가 학습 없이 붙였다. {rc}</p>
   <p class="small muted">입력 규약: 3카메라 192×128 타일(576×128)·15 fps·문맥 29프레임. 우리 씬은 사건 전 history가 0.31 s뿐이라 <b>100 Hz 캡처로 시간을 늘려</b>(15 fps 재생 시 6.7배 슬로모션) 29프레임 = 0.29 s 사건 전 문맥을 만들고, 24프레임 청크 3개를 autoregressive로 이어 0.72 s를 덮었다. 3뷰 = 씬 측면 카메라 + 3/4 상방 + 근상방. 판독은 측면 타일을 16 fps 등가로 재표본한 뒤 동결 판독기 적용.</p>
   {vera_block}
-</section>
+{strips_html}</section>
 
 <section>
   <div class="sec-head"><span class="n">06</span><h2>파이프라인 교훈과 다음 단계</h2></div>
