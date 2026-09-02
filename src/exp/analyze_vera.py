@@ -17,8 +17,24 @@ from pathlib import Path
 
 import numpy as np
 
-from exp.analyze_bundle_a import (adjudicate, adjudicate_kin, centroid_and_area, color_mask,
-                                  diameter_px, interp_gaps, kind_of, track)
+import exp.analyze_bundle_a as A
+from exp.analyze_bundle_a import adjudicate_kin, centroid_and_area, diameter_px, interp_gaps, kind_of, track
+
+_ORIG_MASK = A.color_mask
+
+
+def scaled_mask(image, color):
+    """Bundle A colour masks with the blue sky-band exclusion scaled to the frame height."""
+    x = np.asarray(image, dtype=np.float32)
+    if color == "blue":
+        r, g, b = x[..., 0], x[..., 1], x[..., 2]
+        m = (b > 90) & (b > 1.35 * r) & (b - np.minimum(r, g) > 40)
+        m[: int(140 * x.shape[0] / 480)] = False
+        return m
+    return _ORIG_MASK(image, color)
+
+
+A.color_mask = scaled_mask          # track/diameter_px/centroid_and_area resolve it at call time
 
 
 def resample16(frames, hz=100.0, fps=16.0):
@@ -47,7 +63,7 @@ def reference(rec, gt_side):
         ref["scale"] = ref["dia_red"] / 0.06
     elif kind == "two_ball":
         ref["dia_blue"] = diameter_px(frames[0], "blue")
-        ref["blue_area"] = centroid_and_area(color_mask(frames[0], "blue"))[1]
+        ref["blue_area"] = centroid_and_area(scaled_mask(frames[0], "blue"))[1]
         ref["scale"] = ref["dia_red"] / 0.08
     elif kind == "kin_roll":
         ref["scale"] = ref["dia_red"] / 0.06
@@ -111,24 +127,7 @@ def main():
 
 
 def adjudicate_lowres(rec, ref, frames):
-    """analyze_bundle_a.adjudicate with the blue-mask sky-band exclusion scaled to 128 px."""
-    import exp.analyze_bundle_a as A
-    orig = A.color_mask
-
-    def scaled_mask(image, color):
-        x = np.asarray(image, dtype=np.float32)
-        if color == "blue":
-            r, g, b = x[..., 0], x[..., 1], x[..., 2]
-            m = (b > 90) & (b > 1.35 * r) & (b - np.minimum(r, g) > 40)
-            m[: int(140 * x.shape[0] / 480)] = False
-            return m
-        return orig(image, color)
-
-    A.color_mask = scaled_mask
-    try:
-        return A.adjudicate(rec, ref, frames)
-    finally:
-        A.color_mask = orig
+    return A.adjudicate(rec, ref, frames)
 
 
 if __name__ == "__main__":
