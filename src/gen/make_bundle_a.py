@@ -98,7 +98,8 @@ def family_preview(path: Path, name, entries):
                   fill="white", font=fnt)
     for col, (record, frames) in enumerate(entries):
         x = label_w + col * cell_w
-        title = f"S={record['S']:.2f} y={record['outcome']}"
+        title = (f"S={record['S']:.2f}" if record.get("S") is not None
+                 else f"v0={record.get('v0', float('nan')):.2f}") + f" y={record['outcome']}"
         if not record["in_map"]:
             title += " (excl)"
         draw.text((x + 6, 12), title, fill="white", font=fnt)
