@@ -36,7 +36,8 @@ def arm_stats(rows):
     k = sum(r["prediction"] for r in dec)
     p = k / len(dec) if dec else np.nan
     lo, hi = wilson(k, len(dec))
-    return {"n": len(rows), "n_dec": len(dec), "k": k, "p": p, "lo": lo, "hi": hi}
+    vf = float(np.mean([r["valid_frac"] for r in rows])) if rows else np.nan
+    return {"n": len(rows), "n_dec": len(dec), "k": k, "p": p, "lo": lo, "hi": hi, "valid_frac": vf}
 
 
 def pct(x, nd=0):
@@ -47,14 +48,14 @@ def load():
     orc = list(csv.DictReader(open(ROOT / "analysis/oracle_samples.csv")))
     for r in orc:
         r["S"] = float(r["S"]); r["outcome"] = int(r["outcome"]); r["prediction"] = int(r["prediction"])
-        r["seed"] = int(r["seed"])
+        r["seed"] = int(r["seed"]); r["valid_frac"] = float(r["valid_frac"])
         r["prompt_dir"] = r["outcome"] if r["oracle"] == "correct" else 1 - r["outcome"]
     neu = []
     for r in csv.DictReader(open(ROOT / "analysis/samples.csv")):
         if r["role"] != "grid" or float(r["S"]) not in FLANKS:
             continue
         neu.append({"family": r["family"], "S": float(r["S"]), "outcome": int(r["outcome"]),
-                    "prediction": int(r["prediction"]), "seed": int(r["seed"])})
+                    "prediction": int(r["prediction"]), "seed": int(r["seed"]), "valid_frac": float(r["valid_frac"])})
     return orc, neu
 
 
@@ -133,7 +134,7 @@ def main(src, dst):
             t = table[(fam, S)]
             gt = "반환" if S < 1 else "통과"
             rows_html += (f'<tr><td>{label}</td><td class="num">{S:.2f} ({gt})</td>'
-                          + "".join(f'<td class="num">{pct(t[a]["p"])} <span class="small muted">({t[a]["k"]}/{t[a]["n_dec"]})</span></td>'
+                          + "".join(f'<td class="num">{pct(t[a]["p"])} <span class="small muted">({t[a]["k"]}/{t[a]["n_dec"]} · v {t[a]["valid_frac"]:.2f})</span></td>'
                                     for a in ("neutral", "return", "pass"))
                           + "</tr>\n")
     eff_html = ""
@@ -169,6 +170,7 @@ def main(src, dst):
   <p class="cap">P(통과 예측 | 판정 성립) — 회색 ○ 중립, 파랑 ▽ "되돌아온다/멈춘다" 서술, 빨강 △ "넘어간다/되튄다/돈다" 서술. 수직선 Wilson 95% CI, 아래 n = 판정 성립 수. 연한 파랑 계단 = GT.</p>
   <div class="tbl-wrap"><table>
     <tr><th>씬</th><th class="num">S (GT)</th><th class="num">중립</th><th class="num">"반환" 서술</th><th class="num">"통과" 서술</th></tr>
+    <tr><td colspan="5" class="small muted">칸 표기: P(통과) (통과 수/판정 성립 수 · v = valid_frac 평균, 객체 마스크가 정상 크기로 보인 프레임 비율)</td></tr>
 {rows_html}  </table></div>
   <div class="tbl-wrap"><table>
     <tr><th>씬</th><th class="num">텍스트 효과 Δ<sub>text</sub></th><th>읽기</th><th class="num">물리 효과 Δ<sub>S</sub></th><th>읽기</th><th class="num">짝 뒤집힘</th><th class="num">경계 정확도 중립 → 정답 / 오답</th></tr>
