@@ -95,14 +95,26 @@ class Base:
                 self.model.vis.global_.offheight,
                 self.render_height,
             )
-            self._r = mujoco.Renderer(
-                self.model,
-                height=self.render_height,
-                width=self.render_width,
-            )
-            for _ in range(3):
-                self._r.update_scene(self.data, camera=self.cam)
-                self._r.render()
+            # A freshly created renderer occasionally returns all-black frames
+            # for its whole lifetime (seen 2026-09-02 while another process
+            # held the GPU busy).  Validate the warm-up frame and rebuild.
+            for attempt in range(5):
+                self._r = mujoco.Renderer(
+                    self.model,
+                    height=self.render_height,
+                    width=self.render_width,
+                )
+                for _ in range(3):
+                    self._r.update_scene(self.data, camera=self.cam)
+                    frame = self._r.render()
+                if frame.max() > 8 and frame.mean() > 1.0:
+                    break
+                self._r.close()
+                self._r = None
+                import time
+                time.sleep(1.0 + attempt)
+            else:
+                raise RuntimeError("renderer kept producing black frames")
         self._r.update_scene(self.data, camera=self.cam)
         return self._r.render()
 

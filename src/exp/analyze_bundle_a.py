@@ -26,10 +26,43 @@ from PIL import Image, ImageDraw, ImageFont
 
 G = 9.81
 FPS = 16.0
-FAMILIES = ("hill_roll", "two_ball", "pendulum_rod")
+FAMILIES = ("hill_roll", "two_ball", "pendulum_rod")     # Bundle A default; main() reads the manifest
 # History-extrapolation baseline: uniform motion never turns, never reverses,
 # never stops -- each family's constant answer under linear extrapolation.
-ENCODER_PREDICTION = {"hill_roll": 1, "two_ball": 0, "pendulum_rod": 1}
+ENCODER_PREDICTION = {"hill_roll": 1, "two_ball": 0, "pendulum_rod": 1, "kin_roll": 1}
+
+
+def kind_of(family):
+    """Adjudicator kind from the family name (Bundle A names and their *_wb variants)."""
+    for prefix in ("hill_roll", "two_ball", "pendulum_rod", "wall_bounce", "kin_roll"):
+        if family.startswith(prefix):
+            return prefix
+    raise ValueError(family)
+
+
+def encoder_prediction(family):
+    return ENCODER_PREDICTION[kind_of(family)]
+
+
+def adjudicate_kin(traj, gt_traj, dia, n_cond=5):
+    """P0 control: continuation fidelity of uniform rolling.
+
+    Fits constant velocity on the generated clip's own conditioning frames,
+    extrapolates it over the rollout, and compares with what was generated and
+    with the ground truth.  prediction 1 = keeps rolling (speed ratio >= 0.5),
+    0 = stalls/reverses (< 0.2), -1 = ambiguous."""
+    n = min(len(traj), len(gt_traj))
+    t = np.arange(n_cond)
+    vx = np.polyfit(t, traj[:n_cond, 0], 1)[0]
+    extrap = traj[n_cond - 1, 0] + vx * np.arange(1, n - n_cond + 1)
+    kin_err = float(np.mean(np.abs(traj[n_cond:n, 0] - extrap)))
+    gt_err = float(np.mean(np.abs(traj[n_cond:n, 0] - gt_traj[n_cond:n, 0])))
+    gt_disp = gt_traj[n - 1, 0] - gt_traj[n_cond, 0]
+    gen_disp = traj[n - 1, 0] - traj[n_cond, 0]
+    ratio = float(gen_disp / gt_disp) if abs(gt_disp) > 1e-6 else float("nan")
+    pred = 1 if ratio >= 0.5 else (0 if ratio < 0.2 else -1)
+    return pred, {"kin_err_px": kin_err, "gt_err_px": gt_err, "speed_ratio": ratio,
+                  "kin_err_dia": kin_err / max(dia, 1e-6), "gt_err_dia": gt_err / max(dia, 1e-6)}
 
 
 def color_mask(image, color):
@@ -218,6 +251,8 @@ def gt_reference(record, root):
         ref["pivot"] = pivot.tolist()
         ref["L_px"] = L_px
         ref["scale"] = L_px / record["params"]["length"]
+    elif fam.startswith("kin_roll"):
+        ref["scale"] = dia / 0.06                            # ball is 6 cm
     ref["gt_traj"] = traj
     ref["gt_frames"] = frames
     return ref
@@ -258,6 +293,9 @@ def adjudicate(record, ref, frames):
         out["prediction"] = adjudicate_pendulum(traj, pivot, ref["dia_red"])
         out["law_slope"] = pendulum_energy_slope(traj, pivot, ref["L_px"],
                                                  ref["scale"], n)
+    elif fam.startswith("kin_roll"):
+        out["prediction"], extra = adjudicate_kin(traj, ref["gt_traj"], ref["dia_red"])
+        out.update(extra)
     elif fam.startswith("wall_bounce"):
         vx = np.diff(traj[:, 0])
         slow = np.nonzero(vx < 0.2 * np.median(vx[:4]))[0]
@@ -299,8 +337,9 @@ def result_sheet(path, family, entries, seeds):
         rec = entry["record"]
         marks = "".join("XO-"[["0", "1", "?"].index(m)] if m in "01?" else m
                         for m in entry["marks"])
-        draw.text((x + 6, 8), f"S={rec['S']:.2f} y={rec['outcome']}",
-                  fill="white", font=fnt)
+        head = (f"S={rec['S']:.2f}" if rec.get("S") is not None
+                else f"v0={rec.get('v0', float('nan')):.2f}")
+        draw.text((x + 6, 8), f"{head} y={rec['outcome']}", fill="white", font=fnt)
         draw.text((x + 6, 22), marks, fill=(200, 205, 215), font=fnt)
         for r, frame in enumerate(entry["tiles"]):
             tile = Image.fromarray(frame).resize((cell_w, cell_h),
@@ -311,8 +350,11 @@ def result_sheet(path, family, entries, seeds):
 
 
 def curve_plot(path, per_family):
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.2), constrained_layout=True)
-    for axis, family in zip(axes, FAMILIES):
+    fams = list(per_family)
+    fig, axes = plt.subplots(1, max(len(fams), 1), figsize=(4.7 * max(len(fams), 1), 4.2),
+                             constrained_layout=True, squeeze=False)
+    axes = axes[0]
+    for axis, family in zip(axes, fams):
         data = per_family[family]
         S = np.array([d["S"] for d in data])
         p = np.array([d["p_success"] for d in data], dtype=float)
@@ -320,7 +362,7 @@ def curve_plot(path, per_family):
         axis.plot(S, gt, drawstyle="steps-mid", color="0.55", lw=1.2,
                   label="MuJoCo GT")
         axis.plot(S, p, "o-", color="#C4402C", label="Cosmos P(success)")
-        axis.axhline(ENCODER_PREDICTION[family], color="#3E68A8", ls=":",
+        axis.axhline(encoder_prediction(family), color="#3E68A8", ls=":",
                      lw=1.4, label="const-vel encoder")
         axis.axvline(1.0, color="0.3", ls="--", lw=1)
         axis.set(title=family, xlabel="S", ylim=(-0.06, 1.06), xscale="log")
@@ -348,6 +390,8 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     manifest = [json.loads(l) for l in (root / "manifest.jsonl").read_text().splitlines() if l.strip()]
+    grid_families = list(dict.fromkeys(r["family"] for r in manifest if r["role"] == "grid"))
+    control_families = list(dict.fromkeys(r["family"] for r in manifest if r["role"] == "control"))
     refs, selftest = {}, []
     for record in manifest:
         ref = gt_reference(record, root)
@@ -388,6 +432,9 @@ def main():
                 "law_slope": res.get("law_slope"),
                 "momentum_ratio": res.get("momentum_ratio"),
                 "event_frame": record["event_frame"],
+                "v0": record.get("v0"),
+                "kin_err_px": res.get("kin_err_px"), "gt_err_px": res.get("gt_err_px"),
+                "speed_ratio": res.get("speed_ratio"),
             })
     if not rows:
         print("no rollouts found under", cosmos)
@@ -395,7 +442,7 @@ def main():
 
     per_family_curve = {}
     summary = {}
-    for family in FAMILIES:
+    for family in grid_families:
         frows = [r for r in rows if r["family"] == family and r["role"] == "grid"]
         curve = []
         for record in manifest:
@@ -419,13 +466,37 @@ def main():
             "undecided_rate": float(np.mean([r["prediction"] == -1 for r in frows])),
             "accuracy_nonboundary": float(np.mean([r["correct"] for r in scored])) if scored else np.nan,
             "encoder_accuracy_nonboundary": float(np.mean(
-                [int(ENCODER_PREDICTION[family] == r["outcome"]) for r in scored])) if scored else np.nan,
+                [int(encoder_prediction(family) == r["outcome"]) for r in scored])) if scored else np.nan,
             "gt_law_slope_mean": float(np.mean(gt_slopes)) if gt_slopes else None,
             "gen_law_slope_mean": float(np.mean(gen_slopes)) if gen_slopes else None,
             "momentum_ratio_mean": float(np.nanmean(
                 [r["momentum_ratio"] for r in frows if r["momentum_ratio"] is not None]))
                 if any(r["momentum_ratio"] is not None for r in frows) else None,
             "curve": curve,
+        }
+
+    for family in control_families:
+        crows = [r for r in rows if r["family"] == family]
+        per_v = []
+        for record in manifest:
+            if record["family"] != family:
+                continue
+            srows = [r for r in crows if r["id"] == record["id"]]
+            per_v.append({"id": record["id"], "v0": record.get("v0"), "n": len(srows),
+                          "p_continue": float(np.mean([r["prediction"] == 1 for r in srows])) if srows else np.nan,
+                          "kin_err_px": float(np.nanmean([r["kin_err_px"] for r in srows if r["kin_err_px"] is not None])) if srows else np.nan,
+                          "gt_err_px": float(np.nanmean([r["gt_err_px"] for r in srows if r["gt_err_px"] is not None])) if srows else np.nan,
+                          "speed_ratio": float(np.nanmean([r["speed_ratio"] for r in srows if r["speed_ratio"] is not None])) if srows else np.nan,
+                          "valid_rate": float(np.mean([r["valid"] for r in srows])) if srows else np.nan,
+                          "valid_frac": float(np.mean([r["valid_frac"] for r in srows])) if srows else np.nan})
+        summary.setdefault("controls", {})[family] = {
+            "n_rollouts": len(crows),
+            "p_continue": float(np.mean([r["prediction"] == 1 for r in crows])) if crows else np.nan,
+            "valid_rate": float(np.mean([r["valid"] for r in crows])) if crows else np.nan,
+            "kin_err_px_mean": float(np.nanmean([r["kin_err_px"] for r in crows if r["kin_err_px"] is not None])) if crows else np.nan,
+            "gt_err_px_mean": float(np.nanmean([r["gt_err_px"] for r in crows if r["gt_err_px"] is not None])) if crows else np.nan,
+            "speed_ratio_mean": float(np.nanmean([r["speed_ratio"] for r in crows if r["speed_ratio"] is not None])) if crows else np.nan,
+            "per_sample": per_v,
         }
 
     pre_rows = [r for r in rows if r["role"] == "precheck"]
@@ -440,10 +511,10 @@ def main():
         writer.writerows(rows)
     curve_plot(out / "curves.png", per_family_curve)
 
-    for family in FAMILIES:
+    for family in grid_families + control_families:
         entries = []
         for record in manifest:
-            if record["family"] != family or record["role"] != "grid":
+            if record["family"] != family or record["role"] not in ("grid", "control"):
                 continue
             ref = refs[record["id"]]
             k = min(record["event_frame"], ref["n_frames"] - 1)
@@ -464,8 +535,11 @@ def main():
             entries.append({"record": record, "tiles": tiles, "marks": marks})
         result_sheet(out / "sheets" / f"{family}.jpg", family, entries, args.seeds)
 
-    print(json.dumps({k: {kk: vv for kk, vv in v.items() if kk != "curve"}
-                      for k, v in summary.items() if k in FAMILIES}, indent=2))
+    print(json.dumps({k: {kk: vv for kk, vv in v.items() if kk not in ("curve", "per_sample")}
+                      for k, v in summary.items() if k in grid_families}, indent=2))
+    if control_families:
+        print(json.dumps({k: {kk: vv for kk, vv in v.items() if kk != "per_sample"}
+                          for k, v in summary["controls"].items()}, indent=2))
 
 
 if __name__ == "__main__":

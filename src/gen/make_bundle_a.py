@@ -39,6 +39,9 @@ def color_mask(image, color):
         low = np.minimum(np.minimum(r, g), b)
         high = np.maximum(np.maximum(r, g), b)
         return (low > 185) & (high - low < 30)
+    if color == "green":
+        # Phase A cable-cover hump; the laminate, wall and Panda are neutral.
+        return (g > 90) & (g > 1.3 * r) & (g > 1.3 * b)
     raise ValueError(color)
 
 
@@ -51,7 +54,8 @@ def lower_half(mask):
 def pixel_proxy(name, frames):
     """Certificate-lite: the decision variable in pixels, from rendered frames."""
     if name.startswith("hill_roll"):
-        mask = color_mask(frames[0], "white")   # sky/floor stay below the threshold
+        hump = "green" if "_wb" in name else "white"   # toy: snow; workbench: cable cover
+        mask = color_mask(frames[0], hump)
         if not mask.any():
             return None
         rows = np.nonzero(mask.any(axis=1))[0]
@@ -64,6 +68,12 @@ def pixel_proxy(name, frames):
             return None
         cols = np.nonzero(mask.any(axis=0))[0]
         return {"kind": "blue_diameter_px", "value": int(cols.max() - cols.min() + 1)}
+    if name.startswith("kin_roll"):
+        mask = lower_half(color_mask(frames[0], "red"))
+        if not mask.any():
+            return None
+        cols = np.nonzero(mask.any(axis=0))[0]
+        return {"kind": "red_diameter_px", "value": int(cols.max() - cols.min() + 1)}
     if name.startswith("pendulum_rod"):
         lows = []
         for frame in frames[:ROLLOUT_FRAMES]:
@@ -102,7 +112,8 @@ def family_preview(path: Path, name, entries):
     canvas.save(path)
 
 
-def build_sample(name, cls, sample_id, S, params, root: Path, role="grid"):
+def build_sample(name, cls, sample_id, S, params, root: Path, role="grid",
+                 prompts=PROMPTS, oracle=ORACLE, principle=PRINCIPLE):
     frames, labels = roll(cls, params, cls.cam, DIAG_CFG)
     if S is not None and abs(cls.S_of(params) - S) > 1e-9:
         raise RuntimeError(f"{sample_id}: S inversion mismatch")
@@ -113,7 +124,7 @@ def build_sample(name, cls, sample_id, S, params, root: Path, role="grid"):
         raise RuntimeError(f"{sample_id}: analytic/simulation outcome mismatch")
     if int(labels["event_frame"]) <= CURRENT_IDX:
         raise RuntimeError(f"{sample_id}: event reaches the conditioning window")
-    if name == "hill_roll" and labels["cond_end_x"] + cls.BALL_R > cls.BASE_X:
+    if name.startswith("hill_roll") and labels["cond_end_x"] + cls.BALL_R > cls.BASE_X:
         raise RuntimeError(f"{sample_id}: conditioning touches the slope")
 
     condition = frames[list(CONDITION_INDICES)]
@@ -121,10 +132,10 @@ def build_sample(name, cls, sample_id, S, params, root: Path, role="grid"):
     input_rel = Path("inputs") / f"{sample_id}.npz"
     condition_rel = Path("conditions") / f"{sample_id}.mp4"
     gt_rel = Path("gt") / f"{sample_id}.mp4"
-    prompt = PROMPTS[name]
+    prompt = prompts[name]
     np.savez_compressed(
         root / input_rel,
-        name=sample_id, principle=PRINCIPLE, family=name,
+        name=sample_id, principle=principle, family=name,
         condition_primary=condition,
         current_primary=frames[CURRENT_IDX],
         gt_future_primary=frames[future_idx],
@@ -142,7 +153,7 @@ def build_sample(name, cls, sample_id, S, params, root: Path, role="grid"):
     (root / "conditions" / f"{sample_id}.txt").write_text(prompt)
 
     record = {
-        "id": sample_id, "principle": PRINCIPLE, "family": name,
+        "id": sample_id, "principle": principle, "family": name,
         # "kind" follows the cosmos_v2w_sweep contract: dynamic = 5-frame video
         # conditioning ("grid" here once silently fell through to image mode).
         "kind": "dynamic", "role": role,
@@ -165,12 +176,12 @@ def build_sample(name, cls, sample_id, S, params, root: Path, role="grid"):
         "pixel_proxy": pixel_proxy(name, frames),
     }
     for key in ("slip_max", "energy_drift", "e_eff", "momentum_ratio",
-                "ke_ratio", "bottom_frame", "read_frame"):
+                "ke_ratio", "bottom_frame", "read_frame", "speed_ratio"):
         if key in labels:
             record[key] = float(labels[key])
-    if name in ORACLE:
-        record["oracle_prompt"] = ORACLE[name][record["outcome"]]
-        record["wrong_prompt"] = ORACLE[name][1 - record["outcome"]]
+    if name in oracle:
+        record["oracle_prompt"] = oracle[name][record["outcome"]]
+        record["wrong_prompt"] = oracle[name][1 - record["outcome"]]
     return record, frames
 
 

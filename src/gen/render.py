@@ -18,6 +18,27 @@ from PIL import Image, ImageDraw, ImageFont
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
+_SHARED_GL = None
+
+
+def ensure_shared_gl_context():
+    """One EGL context per process, shared by every mujoco.Renderer.
+
+    mujoco.Renderer creates and frees its own EGL context per instance; with one
+    renderer per sample that churn produced intermittent all-black renderers
+    (2026-09-02, GPU shared with a diffusion job).  MuJoCo draws into its own
+    offscreen FBO (sized by <global offwidth/offheight>), so a single tiny
+    pbuffer context made current once is enough for every renderer.
+    """
+    global _SHARED_GL
+    if _SHARED_GL is None:
+        import mujoco
+        from mujoco.rendering.classic import gl_context as _glc
+        _SHARED_GL = mujoco.GLContext(64, 64)
+        _SHARED_GL.make_current()
+        _glc.GLContext = None          # Renderer.__init__ then reuses the current context
+    return _SHARED_GL
+
 FONT_PATHS = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -58,6 +79,7 @@ def roll(scene_cls, params, camera, cfg: RenderCfg = SWEEP_CFG, n_frames=None):
     The scene's capture rate and render size are overridden from cfg so every
     generator shares one definition of "a frame".
     """
+    ensure_shared_gl_context()
     scene = scene_cls()
     scene.cam = camera
     if cfg.capture_dt is not None:
@@ -66,11 +88,29 @@ def roll(scene_cls, params, camera, cfg: RenderCfg = SWEEP_CFG, n_frames=None):
     scene.render_width = cfg.width
     if n_frames is not None:
         scene.n_frames = n_frames
-    result = scene.run(params, render=True)
-    frames = result.pop("frames")
-    result.pop("trace", None)
-    if scene._r is not None:
-        scene._r.close()
+    import sys, time
+    for attempt in range(6):
+        # Rendering is deterministic: two passes must agree exactly.  Under a
+        # GPU shared with a diffusion job we saw all-black and partially dark
+        # frames (2026-09-02); the double render catches both.
+        passes = []
+        for _ in range(2):
+            result = scene.run(params, render=True)
+            passes.append(result.pop("frames"))
+            result.pop("trace", None)
+            if scene._r is not None:
+                scene._r.close()
+                scene._r = None
+        frames = passes[0]
+        dark = frames is not None and bool((frames.reshape(len(frames), -1).mean(axis=1) < 1.0).any())
+        agree = frames is None or np.array_equal(passes[0], passes[1])
+        if not dark and agree:
+            break
+        print(f"[render] {scene_cls.__name__}: {'dark' if dark else 'non-deterministic'} render on "
+              f"attempt {attempt + 1}; retrying", file=sys.stderr, flush=True)
+        time.sleep(3.0 * (attempt + 1))
+    else:
+        raise RuntimeError(f"{scene_cls.__name__}: corrupt renders 6x -- refusing to emit corrupt data")
     del scene
     return frames, result
 

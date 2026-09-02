@@ -13,6 +13,7 @@ import numpy as np
 import mujoco
 
 from core.threshold.base import Base, G, wrap
+from core.threshold.workbench import wrap_wb
 
 SCENERY = """
     <geom name="refcube" type="box" size="0.025 0.025 0.025" pos="-0.62 0.20 0.025"
@@ -39,6 +40,7 @@ class RollingHill(Base):
     n_frames = 40
     settle_steps = 0
     capture_dt = 1 / 16
+    style = "toy"              # "workbench": same physics, Phase A appearance
     BALL_R = 0.03
     V0 = 1.0
     HILL_W = 0.30              # fixed width; h is the only decision variable
@@ -48,8 +50,12 @@ class RollingHill(Base):
     NC = 961                   # 1.1 mm cells: prism edges well below ball radius
 
     def __init__(self, p0=None):
+        # Lazy: run()/set_params() builds the model; the hfield compile is slow
+        # enough (tens of seconds) that the eager Base.__init__ build was pure waste.
         self.p = p0 or self.params_for_S(1.2)
-        super().__init__()
+        self.model = None
+        self.data = None
+        self._r = None
 
     @classmethod
     def params_for_S(cls, S):
@@ -72,6 +78,7 @@ class RollingHill(Base):
 
     def xml(self):
         h = self.p["h"]
+        hill_mat = "cover" if self.style == "workbench" else "snow"
         extra = (f'<hfield name="hillhf" nrow="2" ncol="{self.NC}" '
                  f'size="{self.HF_HALF} 0.14 {h} 0.001"/>'
                  '<material name="snow" rgba="0.92 0.93 0.95 1" specular="0.05" shininess="0.1"/>')
@@ -79,7 +86,7 @@ class RollingHill(Base):
     <camera name="a_side" fovy="20" pos="0 -2.05 0.30" xyaxes="1 0 0 0 0.1 0.995"/>
     {SCENERY}
     {tick_marks(-0.6, 0.6)}
-    <geom name="hillg" type="hfield" hfield="hillhf" pos="0 0 0.001" material="snow"/>
+    <geom name="hillg" type="hfield" hfield="hillhf" pos="0 0 0.001" material="{hill_mat}"/>
     <body name="ball" pos="{self.START_X} 0 {self.BALL_R + 0.0015}">
       <freejoint/>
       <geom name="ballg" type="sphere" size="{self.BALL_R}" material="red" mass="0.1"/>
@@ -96,7 +103,8 @@ class RollingHill(Base):
           solref="0.0005 1" solimp="0.995 0.999 0.0003"/>
   </contact>
 """
-        return wrap("rolling_hill", body, contact, extra_asset=extra).replace(
+        wrapper = wrap_wb if self.style == "workbench" else wrap
+        return wrapper("rolling_hill", body, contact, extra_asset=extra).replace(
             'timestep="0.001"', 'timestep="0.000125"')
 
     def set_params(self, p):
@@ -147,3 +155,8 @@ class RollingHill(Base):
     @staticmethod
     def sample(rng):
         return dict(v0=1.0, h=float(rng.uniform(0.04, 0.14)))
+
+
+class RollingHillWB(RollingHill):
+    """Phase A1: identical physics, workbench appearance (green cable-cover hump)."""
+    style = "workbench"

@@ -15,6 +15,7 @@ import mujoco
 
 from core.threshold.base import Base, wrap
 from core.threshold.rolling_hill import SCENERY, tick_marks
+from core.threshold.workbench import wrap_wb
 
 RHO = 800.0
 
@@ -30,6 +31,7 @@ class TwoBall(Base):
     n_frames = 30
     settle_steps = 0
     capture_dt = 1 / 16
+    style = "toy"              # "workbench": same physics, Phase A appearance
     R1 = 0.040                 # red incoming ball, fixed
     V0 = 1.0
     START_X = -0.47            # blue rests at x = 0
@@ -79,8 +81,13 @@ class TwoBall(Base):
   </contact>
 """
         # timestep 0.5 ms keeps capture_dt / timestep integral (exact 16 FPS)
-        return wrap("two_ball", body, contact).replace(
+        return self._wrap("two_ball", body, contact).replace(
             'timestep="0.001"', 'timestep="0.0005"')
+
+    def _wrap(self, name, body, contact):
+        if self.style == "workbench":
+            return wrap_wb(name, body, contact, tape_y=0.13, tape_half=0.45)
+        return wrap(name, body, contact)
 
     def set_params(self, p):
         self.p = p
@@ -138,7 +145,7 @@ class WallBounce(TwoBall):
     <camera name="a2_side" fovy="20" pos="-0.05 -1.5 0.24" xyaxes="1 0 0 0 0.1 0.995"/>
     {SCENERY.replace('-0.62 0.20', '-0.50 0.16')}
     {tick_marks(-0.5, 0.1, y=0.13)}
-    <geom name="wall" type="box" size="0.02 0.12 0.10" pos="0.02 0 0.10" material="dark"/>
+    <geom name="wall" type="box" size="0.02 0.12 0.10" pos="0.02 0 0.10" material="{'steel' if self.style == 'workbench' else 'dark'}"/>
     <body name="ballA" pos="{self.START_X} 0 {self.R1 + 0.001}">
       <freejoint/>
       <geom name="gA" type="sphere" size="{self.R1}" material="red" mass="{m1:.6f}"/>
@@ -152,7 +159,7 @@ class WallBounce(TwoBall):
           solimp="0.95 0.95 0.001"/>
   </contact>
 """
-        return wrap("wall_bounce", body, contact).replace(
+        return self._wrap("wall_bounce", body, contact).replace(
             'timestep="0.001"', 'timestep="0.0005"')
 
     def observe(self):
@@ -169,3 +176,13 @@ class WallBounce(TwoBall):
                     e_eff=float(-vA[read] / p["v0"]),
                     momentum_ratio=float("nan"), ke_ratio=float(vA[read] ** 2),
                     aux=float(vA[read]))
+
+
+class TwoBallWB(TwoBall):
+    """Phase A2: identical physics, workbench appearance."""
+    style = "workbench"
+
+
+class WallBounceWB(WallBounce):
+    """Phase A2-0 pre-check on the workbench: steel stopper block."""
+    style = "workbench"
