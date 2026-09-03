@@ -213,12 +213,18 @@ def main(dst):
         return f'<tr><td>{name}</td><td class="num">{pct(a)} <span class="muted small">[{pct(lo)}, {pct(hi)}]</span></td><td class="num">{pct(summ[fam]["encoder_accuracy_nonboundary"])}</td><td class="num">{pct(summ[fam]["undecided_rate"])}</td><td class="num">{pct(summ[fam]["valid_rate"])}</td></tr>'
     cosmos_rows = (acc_row("A1 언덕 · toy", toy, "hill_roll", 240) + acc_row("A3 진자 · toy", toy, "pendulum_rod", 240) + acc_row("A2 두 공 · toy", toy, "two_ball", 240)
                    + acc_row("A1 언덕 · 작업대", wb, "hill_roll_wb", 240) + acc_row("A2 두 공 · 작업대", wb, "two_ball_wb", 240))
+    pb = load_json(ROOT / "phase_b/analysis_pilot/summary.json")
+    if pb:
+        cosmos_rows += (acc_row("B1 매달린 payload · 작업대 (파일럿 3 seed)", pb, "pendulum_rod_wb", 24)
+                        + acc_row("B2 지지 끝 이탈 · 작업대 (파일럿 3 seed)", pb, "support_edge_wb", 24))
     ctrl = wb.get("controls", {}).get("kin_roll", {})
     p0_line = " · ".join(f'v₀ {s["v0"]:.2f}: 변위비 {s["speed_ratio"]:.2f}, 오차 {s["kin_err_px"]:.0f} px' for s in ctrl.get("per_sample", []))
     cosmos_ex = ""
     for sid, root, lab in (("hill_roll_wb_02", "phase_a", "A1 작업대 S=0.79 — GT 반환, 생성은 넘어감"), ("hill_roll_wb_08", "phase_a", "A1 작업대 S=1.26 — GT 통과"),
                            ("two_ball_wb_08", "phase_a", "A2 작업대 S=1.26 — GT 반전, 생성은 정체·직진"), ("pendulum_rod_08", "bundle_a", "A3 toy S=1.26 — GT 회전"),
-                           ("wall_bounce_wb_pre", "phase_a", "A2-0 작업대 벽 반동 — GT 반동"), ("kin_roll_02", "phase_a", "P0 v₀=0.60 — 등속")):
+                           ("wall_bounce_wb_pre", "phase_a", "A2-0 작업대 벽 반동 — GT 반동"), ("kin_roll_02", "phase_a", "P0 v₀=0.60 — 등속"),
+                           ("support_edge_wb_10", "phase_b", "B2 지지 끝 S=2.00 (파일럿) — GT 낙하, 생성은 플레이트 높이로 '공중 부양'"),
+                           ("pendulum_rod_wb_08", "phase_b", "B1 매달린 payload S=1.26 (파일럿) — GT 회전")):
         b = b64_img(ROOT / root / "cosmos_v2w/seed_01" / sid / "comparison.png", max_w=896, quality=80)
         if b:
             cosmos_ex += f'<figure class="ex"><img src="{b}" alt="{lab}"><figcaption>{lab} <span class="muted">(seed 1: 현재 프레임 | 물리 GT +0.32 s | 생성 +0.31 s | 생성 마지막 1.25 s)</span></figcaption></figure>'

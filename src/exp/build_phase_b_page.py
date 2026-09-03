@@ -157,6 +157,13 @@ def main(dst):
             rows += (f"<tr><td>{fam}</td><td>{f['n_rollouts']}</td><td>{f['accuracy_nonboundary']:.2f}</td>"
                      f"<td>{f['encoder_accuracy_nonboundary']:.2f}</td><td>{f['undecided_rate']:.2f}</td><td>{f['valid_rate']:.2f}</td>"
                      f"<td class='mono'>{curve}</td></tr>")
+        examples = ""
+        for sid, lab in (("support_edge_wb_10", "B2 S=2.00 — GT 낙하"), ("support_edge_wb_06", "B2 S=1.05 — GT 낙하(프레임 20)"),
+                         ("support_edge_wb_02", "B2 S=0.79 — GT 지지 유지"), ("pendulum_rod_wb_08", "B1 S=1.26 — GT 회전"),
+                         ("pendulum_rod_wb_02", "B1 S=0.79 — GT 반환")):
+            b = b64_img(ROOT / "cosmos_v2w" / "seed_01" / sid / "comparison.png", max_w=1000)
+            if b:
+                examples += (f"<figure class='gif'><img src='{b}' alt='{lab}'><figcaption>{lab} — seed 1: 현재 프레임 | 물리 GT +0.32 s | 생성 +0.31 s | 생성 마지막 1.25 s</figcaption></figure>")
         curves = b64_img(ROOT / "analysis_pilot" / "curves.png")
         sheets = "".join(f"<figure class='gif'><img src='{b}' alt='{fam} sheet'><figcaption>{fam} 결과 시트 (seed 1–3)</figcaption></figure>"
                          for fam in fams for b in [b64_img(ROOT / "analysis_pilot" / "sheets" / f"{fam}.jpg", max_w=1400)] if b)
@@ -165,6 +172,8 @@ def main(dst):
   <h2>Cosmos-Predict2-2B V2W 파일럿 <span class="sub">3 seed × 22 = 66 롤아웃 · 파이프라인 검증용, 본실험(24 seed) 아님</span></h2>
   <div class="scroll"><table class="grid"><thead><tr><th>가족</th><th>롤아웃</th><th>비경계 정확도</th><th>등속 기준선</th><th>미결</th><th>strict valid</th><th>P(pred = 1 | S)</th></tr></thead><tbody>{rows}</tbody></table></div>
   <p class="lead">등속 기준선 = 항상 "넘어감"(진자) / 항상 "안 떨어짐"(지지 끝). 정확도가 기준선과 같으면 문턱을 읽지 못한 것. n = 3 seed라 방향만 본다.</p>
+  <h3>실제 예시 <span class="sub">seed 1 비교 스트립</span></h3>
+  <div class="gifs">{examples}</div>
   {"<div class='scroll'><img src='" + curves + "' alt='pilot curves'></div>" if curves else ""}
   <div class="gifs">{sheets}</div>
 </section>"""
