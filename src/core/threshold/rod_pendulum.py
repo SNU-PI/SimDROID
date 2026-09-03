@@ -17,6 +17,7 @@ import numpy as np
 import mujoco
 
 from core.threshold.base import Base, G, wrap
+from core.threshold.workbench import wrap_wb
 
 
 class RodPendulum(Base):
@@ -26,6 +27,7 @@ class RodPendulum(Base):
     n_frames = 40
     settle_steps = 0
     capture_dt = 1 / 16
+    style = "toy"              # "workbench": same physics, Phase B appearance (suspended payload)
     BOB_R = 0.035
     ROD_R = 0.012
     V0 = 3.6                    # bob speed at the lowest point, fixed
@@ -85,6 +87,14 @@ class RodPendulum(Base):
     </body>
 """
         # timestep 0.5 ms keeps capture_dt / timestep integral (exact 16 FPS)
+        if self.style == "workbench":
+            # Appearance only: steel post/axle; every added geom is collision-free.
+            body = body.replace('name="post" type="box" size="0.022 0.022', 'name="post" type="box" size="0.022 0.022') \
+                       .replace('material="dark" contype="0" conaffinity="0"/>\n    <geom name="axle"',
+                                'material="steel" contype="0" conaffinity="0"/>\n    <geom name="axle"') \
+                       .replace('size="0.009" material="dark"', 'size="0.009" material="steel"')
+            return wrap_wb("rod_pendulum", body).replace(
+                'timestep="0.001"', 'timestep="0.0005"')
         return wrap("rod_pendulum", body).replace(
             'timestep="0.001"', 'timestep="0.0005"')
 
@@ -133,3 +143,8 @@ class RodPendulum(Base):
     @staticmethod
     def sample(rng):
         return RodPendulum.params_for_S(float(rng.uniform(0.6, 1.6)))
+
+
+class RodPendulumWB(RodPendulum):
+    """Phase B (P1-B): identical physics, workbench appearance (payload on a steel post)."""
+    style = "workbench"

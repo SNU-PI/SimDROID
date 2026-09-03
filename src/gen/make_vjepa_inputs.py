@@ -24,6 +24,7 @@ import mujoco
 from core.threshold.rolling_hill import RollingHill, RollingHillWB
 from core.threshold.two_ball import TwoBall, TwoBallWB, WallBounce, WallBounceWB
 from core.threshold.kin_roll import KinRoll
+from core.threshold.support_edge import SupportEdgeWB
 from gen.render import RenderCfg, ensure_shared_gl_context, write_video, write_png
 from gen.vjepa_spec import (CAM, SIZE, FPS, N_FRAMES, OFFSETS, ctx_indices, target_indices,
                             kind_of, px_per_m)
@@ -34,6 +35,7 @@ FAMILY_CLS = {
     "hill_roll_wb": RollingHillWB, "hill_roll_wb_pre": RollingHillWB,
     "two_ball_wb": TwoBallWB, "wall_bounce_wb_pre": WallBounceWB,
     "kin_roll": KinRoll,
+    "support_edge_wb": SupportEdgeWB,
     "hill_roll": RollingHill, "hill_roll_pre": RollingHill,
     "two_ball": TwoBall, "wall_bounce_pre": WallBounce,
 }
@@ -76,7 +78,8 @@ def placements_for(kind, scene, trace, params, o, t_idx, jitter_px=0.0, ppm=1.0)
     c = ctx_indices(o)[1]
     delta = jitter_px / ppm
     out = []
-    if kind in ("hill", "kin"):
+    if kind in ("hill", "kin", "edge"):
+        # edge: uniform motion keeps the plate height past the end (a hovering ball)
         x_c, v_c = float(trace[c, 0]), float(trace[c, 2])
         for t in t_idx:
             if jitter_px:

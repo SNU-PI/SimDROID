@@ -52,6 +52,23 @@ def gif_pair(path: Path):
     return b64_file(path, "image/gif"), first
 
 
+def ensure_pair_gif(root_sub: str, fam: str, lo_id: str, hi_id: str, scale: float = 0.5):
+    """Side-by-side GT clip GIF (S<1 | S>1) for a family; built once from the gt mp4s."""
+    out = ROOT / root_sub / "gifs" / f"{fam}_pair.gif"
+    if out.exists():
+        return out
+    import imageio.v2 as imageio
+    lo = imageio.mimread(ROOT / root_sub / "gt" / f"{lo_id}.mp4", memtest=False)[:21]
+    hi = imageio.mimread(ROOT / root_sub / "gt" / f"{hi_id}.mp4", memtest=False)[:21]
+    frames = []
+    for a, b in zip(lo, hi):
+        im = Image.fromarray(np.concatenate([a, np.full((a.shape[0], 6, 3), 35, np.uint8), b], axis=1))
+        frames.append(im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    frames[0].save(out, save_all=True, append_images=frames[1:], duration=62, loop=0, optimize=True)
+    return out
+
+
 def vera_strip(sid: str, seed: int = 1):
     gp, rp = ROOT / "phase_a/vera" / f"{sid}.npz", ROOT / f"phase_a/vera_out/seed_{seed:02d}" / sid / "rollout.npz"
     if not (gp.exists() and rp.exists()):
@@ -120,6 +137,19 @@ def scene_cards(toy, wb, verify_a, verify_p):
              formula="S = (r₂ / r₁)³", rule="같은 재질의 두 부품이 저마찰 검사대 위에서 정면충돌.",
              preview=ROOT / "phase_a/previews/two_ball_wb.png", gif=None,
              spec=[("외관", "작업대 wrapper 공통 + 테이프 눈금 위치만 조정"), ("검증", "물리 서명 identical(접촉쌍 3: floor·gA·gB), 격자 게이트 11/11 통과")]),
+        dict(id="pendulum_rod_wb", set="Phase B · 작업대 외관 (2026-09-03)", title="B1 매달린 payload (A3 재스킨)", cls="P1-B 구속 보존", bundle="toy A3와 물리 동일 · A1 언덕과 원리 짝",
+             formula="S = v₀²(1 + 0.4r²/L²) / (4·g·L)", rule="steel 포스트에 봉으로 매달린 붉은 payload가 최저점을 지나 올라간다. 관절·질량·타임스텝이 toy A3와 같아 궤적 차가 0이다.",
+             preview=ROOT / "phase_b/previews/pendulum_rod_wb.png", gif=ensure_pair_gif("phase_b", "pendulum_rod_wb", "pendulum_rod_wb_02", "pendulum_rod_wb_08"),
+             spec=[("결정 변수", "봉 길이 L (v₀ = 3.6 m/s 고정) — S 0.5–2.0 ↔ L 0.66–0.17 m"),
+                   ("사건", "정점 통과 또는 반환 — 프레임 6(S=2.0)–12(S≤0.95)"), ("판독", "붉은 payload 궤적 원 적합 → 피벗·각도, 에너지 기울기 (toy와 동일 판독기)"),
+                   ("검증", "toy↔작업대 물리 서명 identical · 격자 게이트 11/11 · GT 자가검증 11/11 · 모델 실행은 씬 피드백 후")]),
+        dict(id="support_edge_wb", set="Phase B · 작업대 외관 · 신규 씬", title="B2 지지 끝 이탈", cls="P3-A 접촉 상실", bundle="P0 등속과 짝: S &lt; 1 은 등속이 정답",
+             formula="S = v₀·T_REF / (x_edge − x_start),  T_REF = 1.176 s", rule="S &gt; 1 이면 지평 안에 steel 플레이트 끝을 지나 검사대로 떨어짐(1), 아니면 끝까지 지지됨(0). 등속 외삽은 끝을 지나서도 같은 높이로 직진하는 '공중 부양'을 예측한다.",
+             preview=ROOT / "phase_b/previews/support_edge_wb.png", gif=ensure_pair_gif("phase_b", "support_edge_wb", "support_edge_wb_02", "support_edge_wb_08"),
+             spec=[("결정 변수", "플레이트 끝 위치 x_edge (v₀ = 0.35 m/s 고정, 플레이트 높이 0.15 m, 공 6 cm)"),
+                   ("사건", "S=2.0 프레임 11 · 1.26 → 17 · 1.12 → 18; S ≤ 0.95 는 지평 끝(프레임 20)까지 지지"),
+                   ("판독", "빨간 공 중심 행이 문맥 수준보다 0.6 지름 이상 하강 = 낙하; 낙하 초기 가속도/g (포물선 법칙)"),
+                   ("검증", "T_REF 를 시뮬 이분법으로 보정해 경계 S = 0.9998 · 끝 도달 전 속도비 1.0000 · toy↔작업대 서명 identical · GT 자가검증 10/11 (+S = 1.00 나이프에지)")]),
     ]
     return cards
 
@@ -127,7 +157,12 @@ def scene_cards(toy, wb, verify_a, verify_p):
 def main(dst):
     toy = load_json(ROOT / "bundle_a/analysis/summary.json")
     wb = load_json(ROOT / "phase_a/analysis/summary.json")
-    vera = load_json(ROOT / "phase_a/analysis_vera/summary.json")
+    vera = load_json(ROOT / "phase_a/analysis_vera_s8/summary.json") or load_json(ROOT / "phase_a/analysis_vera/summary.json")
+    vera_seeds = round(vera["hill_roll_wb"]["n"] / 6) if vera else 0
+    dila_pix = {t: load_json(ROOT / f"dila/phase_a/pixels{t}/summary.json")
+                for t in ("", "_zero", "_mean", "_c3", "_rev", "_s2", "_s1", "_s1_zero", "_oracle", "_s1_oracle")}
+    dila_lat = {t: load_json(ROOT / f"dila/phase_a/analysis{t}/summary.json")
+                for t in ("", "_zero", "_mean", "_c3", "_rev", "_s2", "_s1", "_s1_zero", "_oracle", "_s1_oracle")}
     vj = load_json(ROOT / "vjepa_ac/phase_a/analysis/summary.json")
     vj_rev = load_json(ROOT / "vjepa_ac/phase_a/analysis_rev/summary.json")
     verify_a = load_json(ROOT / "bundle_a/verify.json")
@@ -212,7 +247,76 @@ def main(dst):
     dd = b64_img(CODE_OUT / "rollout_dreamdojo/hand_slide_mu_s3/zoom_hi2lo.png", max_w=1000, quality=76)
     c25 = b64_img(CODE_OUT / "rollout_cosmos/smoke_slide_mu_s3_t24_neutral/zoom_ctx_hi_neutral.png", max_w=1000, quality=76)
 
-    n_scenes = 6 + 2 + len(EARLY)
+    # ---- DiLA (latent dynamics, past-only rollouts with held/zero latent actions)
+    DILA_VARIANTS = [("", "stride 4 (4 fps) · action 유지"), ("_zero", "stride 4 · action 0"), ("_mean", "stride 4 · 문맥 평균 action"),
+                     ("_c3", "stride 4 · 문맥 3프레임"), ("_rev", "stride 4 · 문맥 반전 (제어)"), ("_s2", "stride 2 (8 fps) · 유지"),
+                     ("_s1", "stride 1 (16 fps, 문맥 5프레임) · 유지"), ("_s1_zero", "stride 1 · action 0"),
+                     ("_oracle", "누설 참조: 참 미래 latent action · stride 4"), ("_s1_oracle", "누설 참조 · stride 1")]
+
+    def pres(px, fam):
+        if not px or fam not in px["families"]:
+            return "—"
+        return " / ".join(f'{px["families"][fam][k]["present_rate"]:.2f}' if k in px["families"][fam] else "·" for k in ("1", "2", "3", "4"))
+
+    def dc(lat, fam):
+        if not lat or fam not in lat["families"]:
+            return "—"
+        g = lat["families"][fam]["gated"]
+        return f'{g["dcos_mean"]:+.3f}' if g.get("dcos_mean") == g.get("dcos_mean") else "—"
+
+    def trk(lat, fam):
+        if not lat or fam not in lat["families"]:
+            return "—"
+        return f'{lat["families"][fam]["all_steps"]["track_mean"]:.1f}'
+
+    dila_rows = ""
+    for tag, lab in DILA_VARIANTS:
+        px, lat = dila_pix.get(tag), dila_lat.get(tag)
+        if not px and not lat:
+            continue
+        leak = ' <span class="chip tiny wait">누설</span>' if "oracle" in tag else ""
+        dila_rows += (f'<tr><td>{lab}{leak}</td><td class="num">{pres(px, "hill_roll_wb")}</td><td class="num">{pres(px, "two_ball_wb")}</td>'
+                      f'<td class="num">{pres(px, "kin_roll")}</td><td class="num">{dc(lat, "hill_roll_wb")} / {dc(lat, "two_ball_wb")}</td><td class="num">{trk(lat, "hill_roll_wb")}</td></tr>')
+    dila_ex = ""
+    for tag, lab in (("", "stride 4 · action 유지"), ("_s1", "stride 1 · 문맥 5프레임 · action 유지"), ("_oracle", "누설 참조 (참 미래 latent action) · stride 4"), ("_s1_oracle", "누설 참조 · stride 1")):
+        b = b64_img(ROOT / "dila/phase_a/previews" / f"examples{tag}.png", max_w=1200, quality=78)
+        if b:
+            dila_ex += (f'<figure class="ex"><img src="{b}" alt="DiLA {lab}"><figcaption>{lab} — 샘플 A1 작업대 S=0.95, A2 작업대 S=0.95. 각 샘플 4행: GT(문맥+표적 4스텝) · 문맥+등속 K · '
+                        f'RAE 디코더로 복원한 GT latent(디코더 상한) · <b>DiLA 예측을 디코드한 것</b>(첫 칸은 문맥 마지막 프레임 복원). 표적 시각 0.5 / 0.75 / 1.0 / 1.25 s.</figcaption></figure>')
+    ora = dila_pix.get("_oracle")
+    ora_txt = ""
+    if ora:
+        h = ora["families"]["hill_roll_wb"]; t = ora["families"]["two_ball_wb"]
+        ora_txt = (f'누설 참조(참 미래 latent action, stride 4)에서 공 존재율은 A1 {h["1"]["present_rate"]:.2f}/{h["2"]["present_rate"]:.2f}/{h["3"]["present_rate"]:.2f}/{h["4"]["present_rate"]:.2f}, '
+                   f'A2 {t["1"]["present_rate"]:.2f}/{t["2"]["present_rate"]:.2f}/{t["3"]["present_rate"]:.2f}/{t["4"]["present_rate"]:.2f}')
+    dila_html = f"""
+<section class="block">
+  <div class="model-head"><div><span class="eyebrow">모델 4 · latent 동역학 (구조/내용 분리)</span><h2>DiLA (Disentangled Latent Action world model, ICML 2026)</h2></div><span class="chip no">NO-GO · past-only 롤아웃 붕괴</span></div>
+  <div class="pipe"><svg viewBox="0 0 1000 170" role="img" aria-label="DiLA 파이프라인">
+    <g font-family="Chakra Petch" font-size="13" font-weight="600" fill="var(--ink)">
+      <rect x="10" y="20" width="160" height="54" rx="4" fill="var(--red-bg)" stroke="var(--red)"/><text x="90" y="43" text-anchor="middle">문맥 2–5프레임</text>
+      <rect x="215" y="20" width="180" height="54" rx="4" fill="var(--panel2)" stroke="var(--line)"/><text x="305" y="43" text-anchor="middle">DINOv2-RAE 인코더</text>
+      <rect x="440" y="20" width="200" height="54" rx="4" fill="var(--panel2)" stroke="var(--line)"/><text x="540" y="43" text-anchor="middle">구조 g · 내용 c 분리</text>
+      <rect x="685" y="20" width="150" height="54" rx="4" fill="var(--panel2)" stroke="var(--line)"/><text x="760" y="43" text-anchor="middle">역동역학 → a</text>
+      <rect x="215" y="100" width="260" height="54" rx="4" fill="var(--blue-bg)" stroke="var(--blue)"/><text x="345" y="123" text-anchor="middle">g' = g + f(g, a)  ×T (a 유지/0)</text>
+      <rect x="520" y="100" width="200" height="54" rx="4" fill="var(--blue-bg)" stroke="var(--blue)"/><text x="620" y="123" text-anchor="middle">융합 디코더 → ẑ (768×16²)</text>
+      <rect x="765" y="100" width="225" height="54" rx="4" fill="var(--green-bg)" stroke="var(--green)"/><text x="877" y="123" text-anchor="middle">latent 판독 + RAE 디코드 → 픽셀 판독</text>
+    </g>
+    <g font-family="Noto Sans KR" font-size="11.5" fill="var(--sub)"><text x="90" y="64" text-anchor="middle">256², stride 4 / 2 / 1</text><text x="305" y="64" text-anchor="middle">224² 재표본, 통계 정규화</text><text x="540" y="64" text-anchor="middle">ST-Transformer · Mamba 메모리</text><text x="760" y="64" text-anchor="middle">256-d latent action</text>
+      <text x="345" y="144" text-anchor="middle">미래 action은 우리가 정해야 함 (past-only 예측 없음)</text><text x="620" y="144" text-anchor="middle">내용 메모리는 예측으로 갱신</text><text x="877" y="144" text-anchor="middle">dcos · 빨간 공 존재율 · 위치</text></g>
+    <g stroke="var(--sub)" stroke-width="1.5" fill="var(--sub)"><line x1="170" y1="47" x2="207" y2="47"/><polygon points="207,42 215,47 207,52"/><line x1="395" y1="47" x2="432" y2="47"/><polygon points="432,42 440,47 432,52"/><line x1="640" y1="47" x2="677" y2="47"/><polygon points="677,42 685,47 677,52"/>
+      <line x1="760" y1="74" x2="760" y2="88"/><line x1="760" y1="88" x2="345" y2="88"/><line x1="345" y1="88" x2="345" y2="92"/><polygon points="340,92 345,100 350,92"/><line x1="475" y1="127" x2="512" y2="127"/><polygon points="512,122 520,127 512,132"/><line x1="720" y1="127" x2="757" y2="127"/><polygon points="757,122 765,127 757,132"/></g>
+  </svg></div>
+  <p>관측만으로 학습된 latent action world model. 프레임을 DINOv2 특징으로 바꾼 뒤 <b>구조(배치·운동)</b>와 <b>내용(외관)</b>으로 나누고, 인접 구조 사이의 역동역학으로 latent action을 뽑아 구조 공간에서 자기회귀로 전개한다. 공개 API는 전체 시퀀스(미래 포함)에서 action을 추론하므로 past-only 예측이 없다. 우리는 문맥 프레임만 넣어 문맥의 action을 얻고, 미래 action을 <b>마지막 값 유지</b>(주 정책) 또는 <b>0</b>으로 두어 전개했다. 판독은 V-JEPA와 같은 latent 지표(P·K·J 후보 미래를 같은 인코더로)에 더해, 디코더가 있으므로 <b>픽셀 판독</b>(빨간 공 존재율·위치)을 병기했다. 입력은 V-JEPA 트랙의 256² 번들을 그대로 재사용했다.</p>
+  <h4>실제 예시</h4>
+  {dila_ex}
+  <h4>결과 (Phase A 29샘플 × 3오프셋 = 87 롤아웃/변형)</h4>
+  <div class="tbl-wrap"><table><tr><th>변형</th><th class="num">공 존재율 A1 스텝 1/2/3/4</th><th class="num">A2</th><th class="num">P0</th><th class="num">dcos (게이트) A1 / A2</th><th class="num">track A1</th></tr>{dila_rows}</table></div>
+  <p class="small muted">공 존재율 = 디코드한 예측에서 빨간 마스크 면적이 문맥 복원 대비 25% 이상인 비율(디코더 상한: GT latent 복원 존재율 0.93–1.0, 중심 오차 ≈ 1 px). track = 예측과 물리 미래의 거리 / freeze와 물리 미래의 거리 (1 미만이어야 문맥보다 미래에 가까움). {ora_txt}</p>
+  <div class="verdict"><b>판정 NO-GO (모델 원인 · past-only 부재 + 자기회귀 붕괴).</b> 미래 action을 유지하든 0으로 두든, 시간축을 4·8·16 fps 어느 것으로 잡든, 구조 롤아웃은 1–4스텝 안에 장면 전체를 흐리고 공을 지운다(스텝 3 이후 존재율 0). latent 거리로도 예측은 실제 인코더 latent 전부에서 멀어지고(track 3–7, V-JEPA의 1.2–2.3보다 큼) 물리/등속 선호가 없다(|dcos| ≤ 0.04, 오라클 ±0.4). 문맥 반전 제어에서도 같은 값. 실패 위치는 V-JEPA(운동 전개 없음)보다 앞: <b>미래 latent action이 주어지지 않으면 상태 자체가 유지되지 않는다</b> — 사용자 문서의 "past-only forecasting 가능 여부" 확인 항목이 부정으로 판정됨. 누설 참조(참 미래 action)는 이 붕괴가 action 정책 탓인지 롤아웃 자체 탓인지 가르는 진단으로만 쓴다.</div>
+</section>
+"""
+    n_scenes = 6 + 2 + 2 + len(EARLY)
     html = f"""<title>PhysicsGen 씬·모델 벤치</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Chakra+Petch:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -259,7 +363,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:22px;line-height:1.7}}
   <h1>임계 씬 라이브러리와 모델 벤치</h1>
   <p class="lead">world model에게 <b>미래를 그리게</b> 했을 때, 현재 속도를 늘려 그리는 것으로는 풀리지 않는 순간 — 언덕 정점, 충돌, 정점 통과 — 에서 물리가 시키는 쪽을 고르는지 본다.
   씬마다 결정 변수 하나를 무차원 포화도 <span class="mono">S</span>로 스윕하고(<span class="mono">S = 1</span>이 경계), 사건 전 프레임만 조건으로 준 뒤 21프레임 미래를 판독한다.</p>
-  <div class="chips"><span class="chip">씬 {n_scenes}종 구현</span><span class="chip">Cosmos 1,536 롤아웃</span><span class="chip">VERA 45</span><span class="chip">V-JEPA 2-AC 87 + 제어 134</span><span class="chip no">세 모델 모두 문턱 미반영</span></div>
+  <div class="chips"><span class="chip">씬 {n_scenes}종 구현</span><span class="chip">Cosmos 1,536 롤아웃</span><span class="chip">VERA 45</span><span class="chip">V-JEPA 2-AC 87 + 제어 134</span><span class="chip">DiLA 87 × 8변형</span><span class="chip no">네 모델 모두 문턱 미반영</span></div>
 </header>
 <nav class="tabs" role="tablist" aria-label="섹션">
   <button role="tab" id="tab-scenes" aria-controls="p-scenes" aria-selected="true">01 씬 라이브러리</button>
@@ -321,14 +425,14 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:22px;line-height:1.7}}
       <rect x="20" y="220" width="180" height="60" rx="4" fill="var(--panel2)" stroke="var(--line)"/><text x="30" y="243" fill="var(--ink)">P0 등속 연장</text>
       <rect x="215" y="180" width="180" height="100" rx="4" fill="var(--blue-bg)" stroke="var(--blue)"/><text x="225" y="203" fill="var(--blue)">P1 연속 역학</text>
       <rect x="410" y="140" width="180" height="140" rx="4" fill="var(--red-bg)" stroke="var(--red)"/><text x="420" y="163" fill="var(--red)">P2 충격 상호작용</text>
-      <rect x="605" y="100" width="180" height="180" rx="4" fill="var(--panel2)" stroke="var(--line)" stroke-dasharray="5 4"/><text x="615" y="123" fill="var(--sub)">P3 접촉 전이</text>
+      <rect x="605" y="100" width="180" height="180" rx="4" fill="var(--green-bg)" stroke="var(--green)"/><text x="615" y="123" fill="var(--green)">P3 접촉 전이</text>
       <rect x="800" y="60" width="180" height="220" rx="4" fill="var(--panel2)" stroke="var(--line)" stroke-dasharray="5 4"/><text x="810" y="83" fill="var(--sub)">P4 안정성 상실</text>
     </g>
     <g font-family="Noto Sans KR" font-size="12.5" fill="var(--ink)">
       <text x="30" y="265">P0 등속 구름 [제어]</text>
-      <text x="225" y="226">A1 언덕 (중력)</text><text x="225" y="246">A3 진자 (구속 보존)</text><text x="225" y="266" fill="var(--sub)">P1-C 마찰 정지 (제한)</text>
+      <text x="225" y="226">A1 언덕 (중력)</text><text x="225" y="246">A3 진자 · B1 payload (구속 보존)</text><text x="225" y="266" fill="var(--sub)">P1-C 마찰 정지 (제한)</text>
       <text x="420" y="186">A2 두 공 충돌 (주)</text><text x="420" y="206">A2-0 벽 반동 (사전검사)</text>
-      <text x="615" y="146" fill="var(--sub)">지지대 끝 이탈 → 자유낙하</text><text x="615" y="166" fill="var(--sub)">가이드 진입 · 접촉 상실</text><text x="615" y="192" fill="var(--sub)">Phase B</text>
+      <text x="615" y="146">B2 지지 끝 이탈 → 자유낙하 (구현)</text><text x="615" y="166" fill="var(--sub)">가이드 진입 · 접촉 상실 (후속)</text><text x="615" y="192" fill="var(--sub)">Phase B · 씬 완료 · 모델 실행 대기</text>
       <text x="810" y="106" fill="var(--sub)">기울어짐 · 흔들린 탑 · 시소</text><text x="810" y="132" fill="var(--sub)">Phase 2 (정적 prior·사건 지연 해결 후)</text>
     </g>
     <g font-family="JetBrains Mono" font-size="11" fill="var(--sub)"><text x="20" y="24">현재 속도 연장으로 풀림 →</text><text x="980" y="24" text-anchor="end">→ 외삽이 가장 강하게 틀림</text></g>
@@ -383,7 +487,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:22px;line-height:1.7}}
     <li>예측에서 물리를 검증한다 (표현 probing이 아니라)</li><li>외삽으로 못 푸는 씬</li><li>정답이 history에서 식별 가능</li><li>사실적이되 인과는 단순</li><li>짝지은 대조가 기본 단위</li>
     <li>이진 + 연속 지표 동시</li><li>원리 전이 (씬 묶음)</li><li>자연스러운 가림</li><li>시공간 해상도에 맞는 물리 (VAE 상한 먼저)</li><li>시뮬레이터 인공물 배제 (timestep·solver·에너지 감사·사건 지평)</li>
   </ol>
-  <div class="chips" style="margin-top:10px"><span class="chip ok">Phase A · P0 + A1·A2 작업대 — 완료</span><span class="chip wait">Phase B · 매달린 payload · stopper · 지지대 끝 이탈</span><span class="chip wait">Phase C · 자연 가림 짝</span><span class="chip">Phase D · 기울어짐 · 흔들린 탑 · 시소</span></div>
+  <div class="chips" style="margin-top:10px"><span class="chip ok">Phase A · P0 + A1·A2 작업대 — 완료</span><span class="chip ok">Phase B · 매달린 payload · 지지 끝 이탈 — 씬 완료 (09-03), 모델 실행은 피드백 후</span><span class="chip wait">Phase C · 자연 가림 짝</span><span class="chip">Phase D · 기울어짐 · 흔들린 탑 · 시소</span></div>
   <p class="small muted" style="margin-top:8px">최종 결과물은 leaderboard가 아니라 <b>Physical Prediction Profile</b>: 등속 / 연속 / 충격 / 접촉 전이 / 안정성 별 등급 + 원리 전이, 문턱 정밀도, 가림 강건성, 법칙 일관성.</p>
 </section>
 </div>
@@ -396,6 +500,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:22px;line-height:1.7}}
     <tr><td>Cosmos-Predict2-2B Video2World</td><td>픽셀 생성 (diffusion, 텍스트+영상 조건)</td><td>5프레임 0.31 s → 21프레임 1.31 s, 480×832</td><td class="num">35+29행 × 24 seed = 1,536</td><td>언덕 전 구간 통과, 두 공 반전 못 그림, 진자만 S자(S50 0.82). 텍스트 지시로도 방향 안 바뀜</td><td><span class="chip no">문턱 미반영 · 생성 한계</span></td></tr>
     <tr><td>VERA DROID planner</td><td>픽셀 생성 (Wan2.1-I2V-14B, 로봇 영상)</td><td>3뷰 29프레임 → 24프레임 × 3청크</td><td class="num">15행 × 3 seed = 45</td><td>반동·반환은 그리지만 S와 무관(무작위), 미결 22–33%, 220 s/샘플</td><td><span class="chip wait">GO/NO-GO 결정 대기</span></td></tr>
     <tr><td>V-JEPA 2-AC</td><td>latent 예측 (ViT-g + action predictor)</td><td>2프레임 latent → 4스텝 latent, 액션 0</td><td class="num">29행 × 3오프셋 = 87 (+제어 134)</td><td>인코더 게이트 가까스로 통과, 예측기는 수동 물체 운동을 외삽하지 않음</td><td><span class="chip no">NO-GO · 운동 전개 없음</span></td></tr>
+    <tr><td>DiLA</td><td>latent 동역학 (DINOv2-RAE, 구조/내용 분리, latent action)</td><td>2–5프레임 latent + action 정책(유지/0) → 4–16스텝 latent → RAE 디코드</td><td class="num">29행 × 3오프셋 × 8변형 + 누설 참조 2</td><td>past-only 예측 없음. 유지/0 action 롤아웃은 1–4스텝 안에 장면이 흐려지고 공이 사라짐(스텝 3 존재율 0), 물리/등속 선호 없음</td><td><span class="chip no">NO-GO</span></td></tr>
     <tr><td class="muted">AdaWorld · DreamDojo-Pretrain 2B · Cosmos-Predict2.5 base</td><td class="muted">latent-action 생성 · 액션 조건 생성 · 영상 이어 그리기</td><td class="muted">5-task 푸셔 씬(2026-08-26)</td><td class="num muted">스모크</td><td class="muted">액션 표현 게이트 실패 / 도메인 간극 / 단기만 물리적</td><td><span class="chip">이전 시도</span></td></tr>
   </table></div>
 </section>
@@ -436,7 +541,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:22px;line-height:1.7}}
   <p>DROID 로봇 데이터로 학습된 비디오 planner. 문맥 29프레임(15 fps)이 필요한데 우리 씬은 사건 전 history가 0.31 s뿐이라 <b>100 Hz로 캡처해 시간을 늘렸다</b>(재생 시 6.7배 슬로모션). 그 대가로 뷰당 192×128이라 공이 5 px 남짓이고, 판독은 측면 타일만 16 fps 등가로 재표본해 같은 판독기를 쓴다.</p>
   <h4>실제 예시</h4>
   {vera_ex}
-  <h4>결과 (3 seed × 15 샘플)</h4>
+  <h4>결과 ({vera_seeds} seed × 15 샘플)</h4>
   <div class="tbl-wrap"><table><tr><th>가족</th><th class="num">n</th><th class="num">정확도(미결 포함)</th><th class="num">미결</th><th class="num">valid_frac</th></tr>{vera_rows}</table></div>
   <div class="verdict"><b>판정 보류.</b> Cosmos가 못 그리던 반동·반환 자체는 그린다(정성 GO). 그러나 반전 선택은 S와 무관해 무작위이고(S&lt;1에서도 반전 4/7), 미결 22–33%, 샘플당 220 s라 벤치마크 급 정량 평가에는 부적합(정량 NO-GO). 확정하려면 격자점당 n ≥ 8이 필요하다.</div>
 </section>
@@ -464,6 +569,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:22px;line-height:1.7}}
   <div class="verdict"><b>판정 NO-GO (모델 원인).</b> 인코더는 두 미래를 1 px 잡음의 2–4.5배로 겨우 구분한다(공 11–17 px). 예측기의 변위 정렬(cos ≈ 0.2)은 문맥 순서를 뒤집어도, 문맥을 3프레임으로 늘려도, 속도를 바꿔도 그대로 — 운동이 아니라 정적 성분에서 오는 정렬이다. 물리·등속 미래 선호 차 |dcos| ≤ 0.05(오라클 ±0.45), S 무관, EE state 무시. DROID 로봇 운동으로 post-train된 AC predictor는 액션이 0인 장면에서 dynamics를 전개하지 않는다.</div>
 </section>
 
+{dila_html}
 <section class="block">
   <div class="model-head"><div><span class="eyebrow">이전 시도 · 2026-08-26 · 5-task 푸셔 씬</span><h2>액션 표현 게이트에서 막힌 모델들</h2></div><span class="chip">규칙: 이식된 액션이 우리 장면에서 전개돼야 물리 점수를 보고한다</span></div>
   <div class="grid3">

@@ -25,7 +25,7 @@ OFFSETS = (0, 1, 2)
 POSE = [0.58, -0.002, 0.248, -3.067, 0.031, -1.913, 0.997]   # DROID home-like EE pose (repo example traj)
 
 # family -> (fovy deg, camera distance m); pixel scale for the jitter render
-VJ_CAMS = {"hill": (36.0, 2.05), "kin": (36.0, 2.05), "two_ball": (44.0, 1.5)}
+VJ_CAMS = {"hill": (36.0, 2.05), "kin": (36.0, 2.05), "two_ball": (44.0, 1.5), "edge": (36.0, 2.05)}
 
 
 def kind_of(family: str) -> str:
@@ -33,6 +33,8 @@ def kind_of(family: str) -> str:
         return "hill"
     if family.startswith("kin_roll"):
         return "kin"
+    if family.startswith("support_edge"):
+        return "edge"
     if family.startswith("two_ball"):
         return "two_ball"
     if family.startswith("wall_bounce"):

@@ -29,12 +29,13 @@ FPS = 16.0
 FAMILIES = ("hill_roll", "two_ball", "pendulum_rod")     # Bundle A default; main() reads the manifest
 # History-extrapolation baseline: uniform motion never turns, never reverses,
 # never stops -- each family's constant answer under linear extrapolation.
-ENCODER_PREDICTION = {"hill_roll": 1, "two_ball": 0, "pendulum_rod": 1, "kin_roll": 1}
+ENCODER_PREDICTION = {"hill_roll": 1, "two_ball": 0, "pendulum_rod": 1, "kin_roll": 1,
+                      "support_edge": 0}
 
 
 def kind_of(family):
     """Adjudicator kind from the family name (Bundle A names and their *_wb variants)."""
-    for prefix in ("hill_roll", "two_ball", "pendulum_rod", "wall_bounce", "kin_roll"):
+    for prefix in ("hill_roll", "two_ball", "pendulum_rod", "wall_bounce", "kin_roll", "support_edge"):
         if family.startswith(prefix):
             return prefix
     raise ValueError(family)
@@ -184,6 +185,35 @@ def adjudicate_pendulum(traj, pivot, dia):
 
 # ---------------------------------------------------------------- law metrics
 
+def adjudicate_edge(traj, y_ctx, dia, n_cond=5):
+    """P3-A support edge.  1 = the ball dropped below the plate level seen in the
+    context (image y grows downward) by more than 0.6 diameters, 0 = it stayed
+    within 0.3 diameters of that level for the whole rollout, -1 = ambiguous."""
+    drop = traj[:, 1] - y_ctx
+    fell = np.nonzero(drop[n_cond:] > 0.6 * dia)[0]
+    if len(fell):
+        return 1, int(fell[0] + n_cond)
+    if np.nanmax(drop[n_cond:]) < 0.3 * dia:
+        return 0, None
+    return -1, None
+
+
+def fall_g_ratio(traj, y_ctx, dia, scale, fps=16):
+    """Free-fall law: vertical acceleration over the first frames of the drop
+    (before landing, drop < 2 diameters) relative to g.  NaN if too short."""
+    drop = traj[:, 1] - y_ctx
+    start = np.nonzero(drop > 0.15 * dia)[0]
+    if not len(start):
+        return float("nan")
+    s = max(int(start[0]) - 1, 0)
+    seg = drop[s:]
+    seg = seg[: max(np.searchsorted(seg > 2.0 * dia, True), 4)]
+    if len(seg) < 4 or np.isnan(seg).any():
+        return float("nan")
+    acc = float(np.mean(np.diff(seg, 2)))          # px / frame^2
+    return acc * fps * fps / max(scale, 1e-6) / 9.81
+
+
 def hill_energy_slope(traj, scale, n_use):
     """Least-squares d(v^2)/dy in metric units; rolling law predicts -(10/7)g."""
     pts = traj[:n_use] / scale
@@ -253,6 +283,9 @@ def gt_reference(record, root):
         ref["scale"] = L_px / record["params"]["length"]
     elif fam.startswith("kin_roll"):
         ref["scale"] = dia / 0.06                            # ball is 6 cm
+    elif fam.startswith("support_edge"):
+        ref["y_ctx"] = float(np.nanmean(traj[:5, 1]))        # plate-level centroid row
+        ref["scale"] = dia / 0.06                            # ball is 6 cm
     ref["gt_traj"] = traj
     ref["gt_frames"] = frames
     return ref
@@ -296,6 +329,9 @@ def adjudicate(record, ref, frames):
     elif fam.startswith("kin_roll"):
         out["prediction"], extra = adjudicate_kin(traj, ref["gt_traj"], ref["dia_red"])
         out.update(extra)
+    elif fam.startswith("support_edge"):
+        out["prediction"], out["gen_event_frame"] = adjudicate_edge(traj, ref["y_ctx"], ref["dia_red"])
+        out["fall_g_ratio"] = fall_g_ratio(traj, ref["y_ctx"], ref["dia_red"], ref["scale"])
     elif fam.startswith("wall_bounce"):
         vx = np.diff(traj[:, 0])
         slow = np.nonzero(vx < 0.2 * np.median(vx[:4]))[0]
