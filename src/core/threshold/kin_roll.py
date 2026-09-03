@@ -39,6 +39,7 @@ class KinRoll(Base):
     def xml(self):
         body = f"""
     <camera name="a_side" fovy="20" pos="0 -2.05 0.30" xyaxes="1 0 0 0 0.1 0.995"/>
+    <camera name="vj_side" fovy="36" pos="-0.02 -2.05 0.30" xyaxes="1 0 0 0 0.1 0.995"/>
     {SCENERY}
     {tick_marks(-0.6, 0.6)}
     <body name="ball" pos="{self.START_X} 0 {self.BALL_R + 0.0015}">

@@ -59,6 +59,7 @@ class TwoBall(Base):
         m1, m2 = sphere_mass(self.R1), sphere_mass(r2)
         body = f"""
     <camera name="a2_side" fovy="20" pos="-0.05 -1.5 0.24" xyaxes="1 0 0 0 0.1 0.995"/>
+    <camera name="vj_side" fovy="44" pos="0.05 -1.5 0.24" xyaxes="1 0 0 0 0.1 0.995"/>
     {SCENERY.replace('-0.62 0.20', '-0.50 0.16')}
     {tick_marks(-0.5, 0.4, y=0.13)}
     <body name="ballA" pos="{self.START_X} 0 {self.R1 + 0.001}">
@@ -143,6 +144,7 @@ class WallBounce(TwoBall):
         m1 = sphere_mass(self.R1)
         body = f"""
     <camera name="a2_side" fovy="20" pos="-0.05 -1.5 0.24" xyaxes="1 0 0 0 0.1 0.995"/>
+    <camera name="vj_side" fovy="44" pos="0.05 -1.5 0.24" xyaxes="1 0 0 0 0.1 0.995"/>
     {SCENERY.replace('-0.62 0.20', '-0.50 0.16')}
     {tick_marks(-0.5, 0.1, y=0.13)}
     <geom name="wall" type="box" size="0.02 0.12 0.10" pos="0.02 0 0.10" material="{'steel' if self.style == 'workbench' else 'dark'}"/>

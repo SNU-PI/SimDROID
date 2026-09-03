@@ -84,6 +84,7 @@ class RollingHill(Base):
                  '<material name="snow" rgba="0.92 0.93 0.95 1" specular="0.05" shininess="0.1"/>')
         body = f"""
     <camera name="a_side" fovy="20" pos="0 -2.05 0.30" xyaxes="1 0 0 0 0.1 0.995"/>
+    <camera name="vj_side" fovy="36" pos="-0.02 -2.05 0.30" xyaxes="1 0 0 0 0.1 0.995"/>
     {SCENERY}
     {tick_marks(-0.6, 0.6)}
     <geom name="hillg" type="hfield" hfield="hillhf" pos="0 0 0.001" material="{hill_mat}"/>
