@@ -134,6 +134,70 @@ def main(dst):
   <div class="scroll"><table class="grid"><thead><tr><th>S</th><th>결과</th><th>사건 프레임</th><th>t (s)</th><th>지평 내 결정</th><th></th><th>파라미터</th></tr></thead>
   <tbody>{rows}</tbody></table></div>
 </section>""")
+    # ---- model results, filled in only when the files exist (pilot / latent tracks)
+    def b64_img(path, max_w=1200, quality=80):
+        if not path.exists():
+            return None
+        im = Image.open(path).convert("RGB")
+        if im.width > max_w:
+            im = im.resize((max_w, round(im.height * max_w / im.width)), Image.LANCZOS)
+        buf = io.BytesIO(); im.save(buf, format="JPEG", quality=quality, optimize=True)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+    models_html = ""
+    pil = ROOT / "analysis_pilot" / "summary.json"
+    if pil.exists():
+        ps = json.loads(pil.read_text())
+        rows = ""
+        for fam in fams:
+            f = ps.get(fam)
+            if not f:
+                continue
+            curve = " · ".join(f"{c['S']:.2f}→{c['p_success']:.2f}" for c in f["curve"])
+            rows += (f"<tr><td>{fam}</td><td>{f['n_rollouts']}</td><td>{f['accuracy_nonboundary']:.2f}</td>"
+                     f"<td>{f['encoder_accuracy_nonboundary']:.2f}</td><td>{f['undecided_rate']:.2f}</td><td>{f['valid_rate']:.2f}</td>"
+                     f"<td class='mono'>{curve}</td></tr>")
+        curves = b64_img(ROOT / "analysis_pilot" / "curves.png")
+        sheets = "".join(f"<figure class='gif'><img src='{b}' alt='{fam} sheet'><figcaption>{fam} 결과 시트 (seed 1–3)</figcaption></figure>"
+                         for fam in fams for b in [b64_img(ROOT / "analysis_pilot" / "sheets" / f"{fam}.jpg", max_w=1400)] if b)
+        models_html += f"""
+<section id="pilot">
+  <h2>Cosmos-Predict2-2B V2W 파일럿 <span class="sub">3 seed × 22 = 66 롤아웃 · 파이프라인 검증용, 본실험(24 seed) 아님</span></h2>
+  <div class="scroll"><table class="grid"><thead><tr><th>가족</th><th>롤아웃</th><th>비경계 정확도</th><th>등속 기준선</th><th>미결</th><th>strict valid</th><th>P(pred = 1 | S)</th></tr></thead><tbody>{rows}</tbody></table></div>
+  <p class="lead">등속 기준선 = 항상 "넘어감"(진자) / 항상 "안 떨어짐"(지지 끝). 정확도가 기준선과 같으면 문턱을 읽지 못한 것. n = 3 seed라 방향만 본다.</p>
+  {"<div class='scroll'><img src='" + curves + "' alt='pilot curves'></div>" if curves else ""}
+  <div class="gifs">{sheets}</div>
+</section>"""
+    vj = ROOT.parent / "vjepa_ac" / "phase_b" / "analysis" / "summary.json"
+    lat_rows = ""
+    if vj.exists():
+        f = json.loads(vj.read_text())["families"].get("support_edge_wb")
+        if f:
+            g = f["gated"]
+            lat_rows += (f"<tr><td>V-JEPA 2-AC (액션 0, 4 fps)</td><td>{f['gate_rate']:.2f}</td><td>{f['all_steps']['sep_over_floor_median']:.1f}</td>"
+                         f"<td>{g['dcos_mean']:+.3f} (오라클 ±{g['dcos_oracle_P_mean']:.2f})</td><td>{f['all_steps']['track_mean']:.2f}</td><td>—</td></tr>")
+    for tag, lab in (("", "DiLA · stride 4 · action 유지"), ("_s1", "DiLA · stride 1 · 유지"), ("_zero", "DiLA · stride 4 · action 0")):
+        la = ROOT.parent / "dila" / "phase_b" / f"analysis{tag}" / "summary.json"
+        px = ROOT.parent / "dila" / "phase_b" / f"pixels{tag}" / "summary.json"
+        if la.exists():
+            f = json.loads(la.read_text())["families"].get("support_edge_wb")
+            pres = "—"
+            if px.exists():
+                q = json.loads(px.read_text())["families"].get("support_edge_wb", {})
+                pres = " / ".join(f"{q[k]['present_rate']:.2f}" if k in q else "·" for k in ("1", "2", "3", "4"))
+            if f:
+                g = f["gated"]
+                dcos = f"{g['dcos_mean']:+.3f}" if g["dcos_mean"] == g["dcos_mean"] else "—"
+                lat_rows += (f"<tr><td>{lab}</td><td>{f['gate_rate']:.2f}</td><td>{f['all_steps']['sep_over_floor_median']:.1f}</td>"
+                             f"<td>{dcos}</td><td>{f['all_steps']['track_mean']:.2f}</td><td>{pres}</td></tr>")
+    if lat_rows:
+        models_html += f"""
+<section id="latent">
+  <h2>latent 트랙 (support_edge_wb) <span class="sub">K = 플레이트 높이를 유지한 등속 = '공중 부양', P = 낙하. S &lt; 1 은 P ≡ K 라 게이트 불통(설계상)</span></h2>
+  <div class="scroll"><table class="grid"><thead><tr><th>모델</th><th>게이트 통과</th><th>sep/floor</th><th>dcos (게이트)</th><th>track</th><th>디코드 공 존재율 스텝 1/2/3/4</th></tr></thead><tbody>{lat_rows}</tbody></table></div>
+  <p class="lead">dcos &gt; 0 이면 예측 변위가 낙하 쪽, &lt; 0 이면 부양 쪽. track &gt; 1 이면 예측이 문맥 마지막 프레임보다 물리 미래에서 더 멀다.</p>
+</section>"""
+
     vb = verify.get("support_edge_boundary", {})
     pend = verify.get("pendulum", [])
     pend_txt = ", ".join(f"S {p['S']}: 서명 동일 {p['identical_signature']}, 궤적 차 {p['trace_max_abs_diff']:.0e}" for p in pend)
@@ -185,10 +249,11 @@ code {{ font-family:"IBM Plex Mono", monospace; font-size:12.5px; }}
 <main>
 <div class="eyebrow">PhysicsGen · Stage 3 · 2026-09-03</div>
 <h1>Phase B 씬 검토: 매달린 payload · 지지 끝 이탈</h1>
-<p class="lead">Phase A 계약(5 문맥 프레임 @16 fps, 21프레임 지평, S 격자 11점, 동결 판독기)을 그대로 쓰는 두 씬. 모델 실행(Cosmos 24 seed ≈ 2 h GPU) 전에 씬 구성에 대한 피드백을 받기 위한 페이지. GT만 있고 모델 출력은 없다.</p>
+<p class="lead">Phase A 계약(5 문맥 프레임 @16 fps, 21프레임 지평, S 격자 11점, 동결 판독기)을 그대로 쓰는 두 씬. 본실험(Cosmos 24 seed ≈ 2 h GPU) 전에 씬 구성에 대한 피드백을 받기 위한 페이지. 씬 절은 GT만 다루고, 파이프라인 검증용 파일럿과 latent 트랙 결과는 맨 아래 절에 있다.</p>
 <div class="chips"><span class="chip">{len(recs)} 샘플 · {len(fams)} 가족</span><span class="chip">480×832 · 16 fps</span><span class="chip">S ∈ {{0.50 … 2.00}}</span><span class="chip">물리 서명 toy = workbench</span><span class="chip">경계 S = {vb.get('S_boundary_sim', float('nan')):.4f}</span></div>
 {''.join(sections)}
 {verify_html}
+{models_html}
 <footer>재현: <code>MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa PYTHONPATH=src python src/gen/make_phase_b.py</code> · <code>python src/exp/verify_phase_b.py</code> · 페이지 <code>src/exp/build_phase_b_page.py</code>. 기록: SimDROID/PROGRESS.md (42).</footer>
 </main>
 <script>
