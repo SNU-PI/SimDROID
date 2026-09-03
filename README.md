@@ -152,3 +152,15 @@ Outcome decoders are calibrated on MuJoCo endpoints only and then frozen.
 Tower is read from red/blue/grey block displacement, Hill from red-ball
 horizontal displacement; object loss and morphing count as validity failures
 rather than physics decisions.
+
+
+## V-JEPA 2-AC latent track (2026-09-03)
+
+```
+./run_vjepa_ac.sh artifacts/phase_a/manifest.jsonl artifacts/vjepa_ac/phase_a --pose-b   # render P/K/J -> latents -> analysis
+PYTHONPATH=src python src/exp/rollout_vjepa_ac.py --root artifacts/vjepa_ac/phase_a --ctx-frames 3   # 3-frame-context variant
+PYTHONPATH=src python src/exp/rollout_vjepa_ac.py --root artifacts/vjepa_ac/phase_a --reverse-ctx    # motion-cue control
+PYTHONPATH=src python src/exp/analyze_vjepa_ac.py --root artifacts/vjepa_ac/phase_a --ctx-tag rev
+```
+Rendering needs the MuJoCo env with OSMesa (`MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa`, `apt-get install libosmesa6` after a pod restart);
+the model steps need `envs/vera` (torch 2.6) and `data/stage0/vjepa2-ac-vitg.pt`. Pages: `src/exp/build_phase_a_page.py`, `src/exp/build_scene_model_ui.py`.
