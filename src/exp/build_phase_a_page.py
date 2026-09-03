@@ -170,7 +170,9 @@ def main(analysis_dir, dst):
         vrows_vera = ""
         for fam, v in vera.items():
             def _lab(smp):
-                return f"S={smp['S']:.2f}" if smp["S"] is not None else f"v0={smp['v0']:.2f}"
+                if smp["S"] is not None:
+                    return f"S={smp['S']:.2f}"
+                return f"v0={smp['v0']:.2f}" if smp.get("v0") is not None else "pre"
             cells = " ".join(f"{_lab(smp)}: {smp['gt']}→<b>{smp['pred']}</b>" for smp in v["per_sample"])
             vrows_vera += f'<tr><td>{fam}</td><td class="num">{v["n"]}</td><td class="num">{pct(v["accuracy"])}</td><td class="num">{pct(v["undecided"])}</td><td class="num">{pct(v["valid_frac"])}</td><td class="small">{cells}</td></tr>\n'
         vera_block = f"""<div class="tbl-wrap"><table>
@@ -183,6 +185,68 @@ def main(analysis_dir, dst):
         g = receipt["generations"]
         rc = (f'로드 {receipt["load_s"]:.0f} s · VRAM {receipt["vram_after_load_gb"]:.0f} GB · 문맥 {receipt["ctx_frames"]}프레임 → 청크 {receipt["chunk_frames"]}프레임 · '
               f'생성 {g[0]["gen_s"]:.0f} s (GPU 단독) / {g[1]["gen_s"]:.0f} s (Cosmos 동시 실행)')
+
+    # ---- V-JEPA 2-AC latent track (2026-09-03)
+    VJ = ROOT / "vjepa_ac"
+    def _load(pth):
+        return json.loads(pth.read_text())["families"] if pth.exists() else None
+    vj = _load(VJ / "phase_a/analysis/summary.json")
+    vj_c3 = _load(VJ / "phase_a/analysis_c3/summary.json")
+    vj_rev = _load(VJ / "phase_a/analysis_rev/summary.json")
+    vj_toy = _load(VJ / "bundle_a/analysis/summary.json")
+    VJ_FAM = {"kin_roll": "P0 등속 제어", "hill_roll_wb": "A1 구름 언덕", "two_ball_wb": "A2 두 공 충돌", "wall_bounce_wb_pre": "A2-0 벽 반동"}
+    vj_rows, vj_var_rows, vj_block = "", "", ""
+    if vj:
+        for fam in ("kin_roll", "hill_roll_wb", "two_ball_wb", "wall_bounce_wb_pre"):
+            if fam not in vj:
+                continue
+            a, g, bs = vj[fam]["all_steps"], vj[fam]["gated"], vj[fam]["by_step"]
+            cosP = " / ".join(fmt(bs[k]["cos_P_mean"]) for k in ("1", "2", "3", "4"))
+            cosK = " / ".join(fmt(bs[k]["cos_K_mean"]) for k in ("1", "2", "3", "4"))
+            trk = f'{fmt(bs["1"]["track_mean"])} → {fmt(bs["4"]["track_mean"])}'
+            if fam == "kin_roll":
+                dc, orc, pp = "P≡K", "—", "—"
+            else:
+                dc, orc, pp = f'{g["dcos_mean"]:+.3f}', f'±{fmt(g["dcos_oracle_P_mean"])}', pct(g["p_dcos_pos"])
+            vj_rows += (f'<tr><td>{VJ_FAM[fam]}</td><td class="num">{a["n"]}</td><td class="num">{pct(vj[fam]["gate_rate"])}</td>'
+                        f'<td class="num">{fmt(a["sep_over_floor_median"],1)}</td><td class="num">{trk}</td>'
+                        f'<td class="num small">{cosP}<br>{cosK}</td><td class="num">{dc}</td><td class="num">{pp}</td><td class="num">{orc}</td></tr>\n')
+        def _kin(src):
+            return " / ".join(fmt(src["kin_roll"]["by_step"][k]["cos_P_mean"]) for k in ("2", "3", "4")) if src and "kin_roll" in src else "—"
+        def _dc(src, fam):
+            return f'{src[fam]["gated"]["dcos_mean"]:+.3f}' if src and fam in src else "—"
+        for lab, src, h, tb in (("기본 (문맥 2프레임 · 작업대)", vj, "hill_roll_wb", "two_ball_wb"),
+                                 ("문맥 3프레임 (0, 4, 8) · 사건 전인 hill·P0만", vj_c3, "hill_roll_wb", "two_ball_wb"),
+                                 ("문맥 순서 반전 (운동 단서 뒤집기)", vj_rev, "hill_roll_wb", "two_ball_wb"),
+                                 ("toy 외관 (Bundle A)", vj_toy, "hill_roll", "two_ball")):
+            vj_var_rows += f'<tr><td>{lab}</td><td class="num">{_kin(src)}</td><td class="num">{_dc(src, h)}</td><td class="num">{_dc(src, tb)}</td></tr>\n'
+        vj_curves = b64img(VJ / "phase_a/analysis/curves.png", scale=0.9, quality=82) if (VJ / "phase_a/analysis/curves.png").exists() else None
+        vj_strips = ""
+        for sid, lab in (("hill_roll_wb_04", "A1 S=0.95 (GT: 반환)"), ("two_ball_wb_04", "A2 S=0.95 (GT: 직진, 파란 공이 앞서감)")):
+            pp_ = VJ / "phase_a/previews" / f"{sid}.png"
+            if pp_.exists():
+                vj_strips += (f'<div class="media"><img src="data:image/jpeg;base64,{b64img(pp_, scale=0.5, quality=80)}" alt="{lab} 후보 미래"></div>'
+                              f'<p class="cap">{lab} — 256² 전용 카메라. 위: 문맥 2프레임(t=0, 0.25 s) + 물리 미래 P(0.5/0.75/1.0/1.25 s) · 가운데: 등속 counterfactual K(문맥 속도 유지, MuJoCo qpos 재배치 렌더) · 아래: 지터 J(물리 위치 + 빨간 공 1 px). 예측기는 위 두 프레임의 latent만 받는다.</p>\n')
+        vj_block = f"""<section>
+  <div class="sec-head"><span class="n">06</span><h2>V-JEPA 2-AC latent 트랙 — 세 번째 모델</h2></div>
+  <p>픽셀을 생성하지 않는 예측기를 같은 씬에 넣었다. V-JEPA 2-AC(ViT-g 인코더 + action-conditioned predictor, DROID 4 fps로 post-train)에 <b>로봇 액션 0</b>·상수 EE state를 주고, 사건 전 두 프레임(0.25 s 간격)의 latent에서 4스텝(0.5–1.25 s)을 자기회귀로 예측했다.
+  판독은 latent 공간에서만 한다: 같은 시각의 <b>물리 미래 P</b>와 <b>등속 counterfactual K</b>를 MuJoCo로 렌더해 인코딩한 뒤, 예측이 어느 쪽에 가까운지 본다. 누출 없음(액션 0, 문맥은 사건 전만). 오프셋 0/1/2가 seed를 대신한다(결정적 모델).</p>
+  <div class="kv">
+    <dt>게이트</dt><dd>인코더가 두 미래를 구분하는가: sep = d(z_P, z_K)를 <b>빨간 공 1 px 이동</b>의 latent 거리(floor)와 비교, sep &gt; 3·floor인 (샘플, 스텝)만 판독. P0 제어(P≡K)는 sep ≈ 0.1·floor로 자기검증.</dd>
+    <dt>지표</dt><dd>변위 방향 dcos = cos(ẑ−z_last, z_P−z_last) − cos(ẑ−z_last, z_K−z_last). 양수 = 물리 쪽. 물리 오라클(ẑ=z_P)은 +(1−cos_PK) ≈ +0.45, 등속 오라클은 그 음수. freeze(ẑ=z_last)는 변위 0이라 이 지표에서 중립 — 거리 기반 Δ에서 생기는 "반환하는 물리 미래는 문맥에 가깝다" 교란을 제거한다.</dd>
+    <dt>규모</dt><dd>Phase A 29행 × 3오프셋 = 87 롤아웃(+ toy 24행 × 3, 문맥 3프레임·반전 제어) · 생성 ≈ 5 s/샘플(3오프셋) · VRAM 6 GB · 자산 ckpt 11.8 GB.</dd>
+  </div>
+{vj_strips}  <div class="tbl-wrap"><table>
+    <tr><th>씬</th><th class="num">스텝 행</th><th class="num">게이트 통과</th><th class="num">sep/floor</th><th class="num">track 스텝1→4</th><th class="num">cos_P / cos_K (스텝 1–4)</th><th class="num">dcos (게이트)</th><th class="num">P(dcos&gt;0)</th><th class="num">오라클</th></tr>
+{vj_rows}  </table></div>
+  <p class="small muted">track = d(ẑ, z_P)/d(z_last, z_P): 1보다 크면 예측 latent가 마지막 문맥 프레임보다 물리 미래에서 멀다. cos_P·cos_K = 예측 변위와 각 후보 변위의 코사인(스텝 1/2/3/4). 오라클 = 물리 오라클의 dcos(등속 오라클은 그 음수).</p>
+  {"<div class='media'><img src='data:image/jpeg;base64," + vj_curves + "' alt='V-JEPA latent track curves'></div><p class='cap'>위: 마지막 스텝 거리차 Δ/sep — 예측기(빨강)는 freeze 기준선(회색)의 축소판. 가운데: 분리도 sep/floor·motion/floor와 게이트선. 아래: 변위 방향 dcos(전체 토큰 ●, P≠K 패치 ▲)와 오라클 범위(회색 띠). 어느 S에서도 dcos는 0 근처이고 S=1에서 부호가 바뀌지 않는다.</p>" if vj_curves else ""}
+  <div class="tbl-wrap"><table>
+    <tr><th>변형</th><th class="num">P0 cos_P (스텝 2/3/4)</th><th class="num">A1 dcos</th><th class="num">A2 dcos</th></tr>
+{vj_var_rows}  </table></div>
+  <div class="ask"><p><b>판정: NO-GO (모델 원인).</b> (1) 인코더 게이트는 가까스로 통과한다(sep/floor 2–4.5, 통과율 A1 47%·A2 82%) — 256²에서 공 11–17 px가 한계다. (2) 예측기는 수동 물체의 운동을 외삽하지 않는다: 예측 변위의 정렬(cos ≈ 0.2)이 문맥 순서를 뒤집어도, 문맥을 3프레임으로 늘려도, 공 속도를 0.3→0.9 m/s로 바꿔도 그대로다 — 운동 단서가 아니라 정적 성분에서 오는 정렬이다. EE state를 바꿔도 예측은 동일(상관 1.00). (3) 물리 미래와 등속 미래를 구분하지 않는다(|dcos| ≤ 0.05, 오라클 ±0.45, S 무관, toy·작업대 동일). DROID 로봇 운동으로 post-train된 AC predictor는 액션이 0인 장면에서 dynamics를 전개하지 않는다 — Cosmos(관성 외삽)·VERA(무작위 반전)와는 다른 실패 위치("운동 전개 자체 없음").</p></div>
+</section>
+"""
 
     html = f"""<title>Phase A 작업대 씬</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -206,7 +270,7 @@ section{{background:var(--panel);border:1px solid var(--line);border-radius:10px
 footer{{color:var(--sub);font-size:12.5px;margin-top:26px;line-height:1.7}}
 </style>
 <main>
-<div class="eyebrow">PhysicsGen · Phase A · 2026-09-02</div>
+<div class="eyebrow">PhysicsGen · Phase A · 2026-09-02 – 09-03</div>
 <h1>Phase A 작업대 씬 — 외관 도메인 대조와 P0 제어</h1>
 <p class="lead">Bundle A(toy 외관)의 P1·P2 임계 씬을 <b>물리는 그대로 두고 외관만</b> 로봇 작업대(회색 검사대, 정지한 Franka, 픽스처, 테이프 눈금)로 바꾸고,
 결정 변수가 없는 <b>P0 등속 제어 씬</b>을 더했다. 질문은 둘이다: (1) toy 외관이 Cosmos에 불리했는가 — 사실적 외관에서 결정 곡선이 달라지는가,
@@ -217,6 +281,7 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:26px;line-height:1.7}}
   <span class="chip warn">A1 정확도 {pct(toy["hill_roll"]["accuracy_nonboundary"])} → {pct(wb["hill_roll_wb"]["accuracy_nonboundary"])}</span>
   <span class="chip warn">A2 정확도 {pct(toy["two_ball"]["accuracy_nonboundary"])} → {pct(wb["two_ball_wb"]["accuracy_nonboundary"])}</span>
   {"<span class='chip'>P0 계속 " + pct(ctrl["p_continue"]) + "</span>" if ctrl else ""}
+  {"<span class='chip warn'>V-JEPA 2-AC latent: 운동 전개 없음</span>" if vj else ""}
 </div>
 
 <section>
@@ -261,15 +326,16 @@ footer{{color:var(--sub);font-size:12.5px;margin-top:26px;line-height:1.7}}
   {vera_block}
 {strips_html}</section>
 
-<section>
-  <div class="sec-head"><span class="n">06</span><h2>파이프라인 교훈과 다음 단계</h2></div>
+{vj_block}<section>
+  <div class="sec-head"><span class="n">07</span><h2>파이프라인 교훈과 다음 단계</h2></div>
   <ul>
     <li><b>렌더 백엔드.</b> GPU가 diffusion 작업에 점유된 동안 MuJoCo EGL 렌더는 간헐적으로 검거나 부분 손상된 프레임을 냈고, 재시도 중 프로세스가 조용히 종료되기도 했다. 소프트웨어 렌더(OSMesa)로 전환하되 OSMesa 프레임은 EGL과 상하 반전이므로 기준 프레임 비교로 검증한 뒤 뒤집어 쓴다. 생성 시 두 번 렌더해 완전 일치해야 통과.</li>
     <li><b>세션 소멸 대비.</b> 수집→판독은 세션 워처가 아니라 스크립트 안에서 연쇄한다.</li>
-    <li><b>다음.</b> Phase B(매달린 payload 진자·stopper·support-edge 이탈), Phase C(자연 occlusion 짝), 모델 트랙(V-JEPA 2-AC latent, A2World, DiLA).</li>
+    <li><b>latent 트랙 방법론(재사용 가능).</b> 등속 counterfactual 렌더러(물리 궤적 qpos 재배치로 자가검증, 재배치 오차 &lt; 0.05 px), 1 px 지터 floor와 분리도 게이트, freeze 교란을 제거한 변위 방향 지표와 오라클 스케일, 문맥 반전 제어. 다음 latent 후보(DiLA 등)에 그대로 적용한다.</li>
+    <li><b>다음.</b> 결정 대기: VERA GO/NO-GO(반동은 그리나 S 무관, 미결 22–33%, 220 s/샘플), DiLA 착수(past-only 예측 미제공 → 미래 latent action 정책 필요). Phase B(매달린 payload 진자·stopper·support-edge 이탈), Phase C(자연 occlusion 짝) 이후 A2World(robot-context 씬).</li>
   </ul>
 </section>
-<footer>생성: <span class="mono">SimDROID/code_vwm</span> 브랜치 <span class="mono">mnjihun/bundle-a-scenes</span> · 씬 <span class="mono">core/threshold/{{workbench,kin_roll}}.py</span> · 생성 <span class="mono">gen/make_phase_a.py</span> · 검증 <span class="mono">exp/verify_phase_a.py</span> · 판독 <span class="mono">exp/analyze_bundle_a.py</span> · VERA <span class="mono">external/vera_infer.py</span> · 2026-09-02 · 문지훈/Claude</footer>
+<footer>생성: <span class="mono">SimDROID/code_vwm</span> 브랜치 <span class="mono">mnjihun/bundle-a-scenes</span> · 씬 <span class="mono">core/threshold/{{workbench,kin_roll}}.py</span> · 생성 <span class="mono">gen/make_phase_a.py</span> · 검증 <span class="mono">exp/verify_phase_a.py</span> · 판독 <span class="mono">exp/analyze_bundle_a.py</span> · VERA <span class="mono">external/vera_infer.py</span> · V-JEPA 2-AC <span class="mono">gen/make_vjepa_inputs.py · exp/rollout_vjepa_ac.py · exp/analyze_vjepa_ac.py</span> · 2026-09-02/03 · 문지훈/Claude</footer>
 </main>
 """
     Path(dst).write_text(html)
