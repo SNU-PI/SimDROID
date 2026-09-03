@@ -85,6 +85,8 @@ def main():
     ap.add_argument("--only", nargs="*", default=None)
     ap.add_argument("--pose-b", action="store_true", help="also roll out with a second EE pose")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--ctx-frames", type=int, default=2, help="context frames at 4 fps (2 = contract; 3 = variant)")
+    ap.add_argument("--reverse-ctx", action="store_true", help="control: feed the context frames in reversed order (motion cue flipped)")
     args = ap.parse_args()
     device = "cuda"
     t0 = time.time()
@@ -110,20 +112,26 @@ def main():
         ts = time.time()
         z_seq = encode(enc, tf, frames, device)                      # (24, N, D)
         np.savez_compressed(root / "latents" / f"{sid}_gtseq.npz", z=z_seq.half().cpu().numpy())
+        extra = args.ctx_frames - 2                 # extra context frames borrowed from the target grid
+        tag = (f"_c{args.ctx_frames}" if extra else "") + ("_rev" if args.reverse_ctx else "")
         for oi, o in enumerate(d["offsets"]):
-            cidx = d["ctx_idx"][oi]
-            tidx = d["target_idx"][oi]
-            z_ctx = z_seq[list(cidx)]
-            z_pred = rollout(pred, z_ctx, POSE, N_STEPS, device)
+            cidx = [int(x) for x in d["ctx_idx"][oi]] + [int(x) for x in d["target_idx"][oi][:extra]]
+            tidx = d["target_idx"][oi][extra:]
+            if extra and not (cidx[-1] < int(d["event_frame"])):
+                continue                             # a longer context would touch the event
+            n_steps = len(tidx)
+            z_ctx = z_seq[cidx[::-1]] if args.reverse_ctx else z_seq[cidx]
+            z_pred = rollout(pred, z_ctx, POSE, n_steps, device)
             out = {"z_ctx": z_ctx, "z_pred": z_pred, "z_gt": z_seq[list(tidx)],
-                   "z_kin": encode(enc, tf, d["frames_kin"][oi], device),
-                   "z_jit": encode(enc, tf, d["frames_jit"][oi], device)}
+                   "z_kin": encode(enc, tf, d["frames_kin"][oi][extra:], device),
+                   "z_jit": encode(enc, tf, d["frames_jit"][oi][extra:], device)}
             if args.pose_b:
-                out["z_pred_b"] = rollout(pred, z_ctx, pose_b, N_STEPS, device)
+                out["z_pred_b"] = rollout(pred, z_ctx, pose_b, n_steps, device)
             np.savez_compressed(
-                root / "latents" / f"{sid}_o{int(o)}.npz",
+                root / "latents" / f"{sid}_o{int(o)}{tag}.npz",
                 **{k: v.half().cpu().numpy() for k, v in out.items()},
-                offset=int(o), ctx_idx=cidx, target_idx=tidx, ctx_ok=bool(d["ctx_ok"][oi]),
+                kin_offset=extra,
+                offset=int(o), ctx_idx=np.asarray(cidx), target_idx=np.asarray(tidx), ctx_ok=bool(d["ctx_ok"][oi]),
                 family=str(d["family"]), kind=str(d["kind"]), S=float(d["S"]),
                 outcome=int(d["outcome"]), event_frame=int(d["event_frame"]),
                 px_per_m=float(d["px_per_m"]))
