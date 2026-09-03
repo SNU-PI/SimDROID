@@ -76,7 +76,9 @@ def main(analysis_dir, dst):
     n_seeds = len(seeds)
     n_roll = len(rows)
     vera = None
-    vp = ROOT / "phase_a/analysis_vera/summary.json"
+    vp = ROOT / "phase_a/analysis_vera_s8/summary.json"          # seeds 1-8 (2026-09-03) when present
+    if not vp.exists():
+        vp = ROOT / "phase_a/analysis_vera/summary.json"
     if vp.exists():
         vera = json.loads(vp.read_text())
     receipt = json.loads((EXT / "vera_smoke_out/receipt.json").read_text()) if (EXT / "vera_smoke_out/receipt.json").exists() else None

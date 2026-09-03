@@ -164,3 +164,32 @@ PYTHONPATH=src python src/exp/analyze_vjepa_ac.py --root artifacts/vjepa_ac/phas
 ```
 Rendering needs the MuJoCo env with OSMesa (`MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa`, `apt-get install libosmesa6` after a pod restart);
 the model steps need `envs/vera` (torch 2.6) and `data/stage0/vjepa2-ac-vitg.pt`. Pages: `src/exp/build_phase_a_page.py`, `src/exp/build_scene_model_ui.py`.
+
+## DiLA latent track (2026-09-03)
+
+Past-only rollouts of DiLA (Disentangled Latent Action world model) on the V-JEPA 256x256 input
+bundles; the root holds `manifest.jsonl` plus an `inputs/` symlink to the V-JEPA bundle.
+
+```
+./run_dila.sh artifacts/dila/phase_a          # hold / zero / mean policies, c3 / rev controls, stride 1 / 2 / 4
+PYTHONPATH=src envs/vera/bin/python src/exp/rollout_dila.py --root artifacts/dila/phase_a --policy oracle   # leaky reference
+PYTHONPATH=src envs/vera/bin/python src/exp/analyze_vjepa_ac.py --root artifacts/dila/phase_a --ctx-tag s1  # latent metrics
+PYTHONPATH=src envs/vera/bin/python src/exp/analyze_dila_pixels.py --root artifacts/dila/phase_a --ctx-tag s1  # decoded red-ball readout
+PYTHONPATH=src envs/vera/bin/python src/exp/preview_dila.py --ids hill_roll_wb_04 --tag _s1 --out strip.png
+```
+
+Assets: `external/DiLA` (repo), `external/DiLA/checkpoints/model.pt`, `external/DiLA/pretrained/` (RAE decoder,
+stats, DINOv2-with-registers-base, patched decoder config). Needs `beartype` in `envs/vera`.
+
+## Phase B scenes (2026-09-03)
+
+`pendulum_rod_wb` (P1-B suspended payload, RodPendulumWB) and `support_edge_wb` (P3-A contact loss, SupportEdgeWB).
+
+```
+PYTHONPATH=src envs/miniforge3/envs/simdroid/bin/python src/exp/verify_phase_b.py            # physics signatures, S grid, boundary bisection
+MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa PYTHONPATH=src .../simdroid/bin/python src/gen/make_phase_b.py
+PYTHONPATH=src .../simdroid/bin/python src/exp/analyze_bundle_a.py --root artifacts/phase_b --gt-selftest-only
+./run_phase_b_vwm.sh 1 2 3                                                                    # Cosmos V2W, one seed per call
+PYTHONPATH=src .../simdroid/bin/python src/exp/analyze_bundle_a.py --root artifacts/phase_b --seeds 1 2 3 --output-dir artifacts/phase_b/analysis_pilot
+PYTHONPATH=src .../simdroid/bin/python src/exp/build_phase_b_page.py                          # scene review page
+```
