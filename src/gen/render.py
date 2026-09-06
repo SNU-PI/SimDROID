@@ -73,7 +73,7 @@ def font(size: int):
     return ImageFont.load_default()
 
 
-def roll(scene_cls, params, camera, cfg: RenderCfg = SWEEP_CFG, n_frames=None):
+def roll(scene_cls, params, camera, cfg: RenderCfg = SWEEP_CFG, n_frames=None, segment=False):
     """Run one episode and return (frames, labels).
 
     The scene's capture rate and render size are overridden from cfg so every
@@ -94,9 +94,11 @@ def roll(scene_cls, params, camera, cfg: RenderCfg = SWEEP_CFG, n_frames=None):
         # GPU shared with a diffusion job we saw all-black and partially dark
         # frames (2026-09-02); the double render catches both.
         passes = []
+        seg = None
         for _ in range(2):
-            result = scene.run(params, render=True)
+            result = scene.run(params, render=True, segment=segment)
             passes.append(result.pop("frames"))
+            seg = result.pop("seg", None)
             result.pop("trace", None)
             if scene._r is not None:
                 scene._r.close()
@@ -111,8 +113,19 @@ def roll(scene_cls, params, camera, cfg: RenderCfg = SWEEP_CFG, n_frames=None):
         time.sleep(3.0 * (attempt + 1))
     else:
         raise RuntimeError(f"{scene_cls.__name__}: corrupt renders 6x -- refusing to emit corrupt data")
+    if segment:
+        result["seg"] = seg
+        result["geom_names"] = scene.geom_names()
+        result["geom_bodies"] = [int(b) for b in scene.model.geom_bodyid]
+        result["body_names"] = [mujoco_body_name(scene.model, i) for i in range(scene.model.nbody)]
+        result["body_parents"] = [int(b) for b in scene.model.body_parentid]
     del scene
     return frames, result
+
+
+def mujoco_body_name(model, i):
+    import mujoco
+    return mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i) or ""
 
 
 def roll_views(scene_cls, params, cameras, cfg: RenderCfg = SWEEP_CFG, n_frames=None):

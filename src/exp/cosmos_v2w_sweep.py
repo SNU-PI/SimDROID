@@ -54,7 +54,12 @@ def parse_args():
     parser.add_argument("--original-checkpoint", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--sweep-root", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="single-seed output directory (with --seed)")
+    parser.add_argument("--output-root", type=Path, default=None,
+                        help="multi-seed root: writes <root>/seed_NN per seed (with --seeds)")
+    parser.add_argument("--seeds", type=int, nargs="*", default=None,
+                        help="several seeds in one process (the model loads once)")
     parser.add_argument("--families", nargs="*")
     parser.add_argument("--ids", nargs="*", help="Optional exact sample ids for smoke tests or resuming subsets.")
     parser.add_argument("--seed", type=int, default=1)
@@ -138,7 +143,14 @@ def main():
     args = parse_args()
     if args.num_frames % 4 != 1:
         raise ValueError("--num-frames must have the form 4k+1 for the causal video tokenizer")
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    if args.seeds:
+        if args.output_root is None:
+            raise ValueError("--seeds needs --output-root")
+        seed_dirs = [(s, args.output_root / f"seed_{s:02d}") for s in args.seeds]
+    else:
+        if args.output_dir is None:
+            raise ValueError("--output-dir is required without --seeds")
+        seed_dirs = [(args.seed, args.output_dir)]
     records = load_records(args.manifest, args.families, args.ids)
 
     transformer = CosmosTransformer3DModel.from_single_file(
@@ -155,7 +167,14 @@ def main():
     )
     pipe.to("cuda")
     pipe.set_progress_bar_config(disable=True)
-    results_path = args.output_dir / "results.jsonl"
+    for seed, output_dir in seed_dirs:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"=== seed {seed} -> {output_dir}", flush=True)
+        run_seed(args, pipe, records, seed, output_dir)
+
+
+def run_seed(args, pipe, records, seed, output_dir):
+    results_path = output_dir / "results.jsonl"
     if results_path.exists():
         existing = [json.loads(line) for line in results_path.read_text().splitlines() if line.strip()]
         results = {item["id"]: item for item in existing}
@@ -163,7 +182,7 @@ def main():
         results = {}
 
     for position, record in enumerate(records, 1):
-        sample_dir = args.output_dir / record["id"]
+        sample_dir = output_dir / record["id"]
         if record["id"] in results and (sample_dir / "rollout.mp4").is_file():
             print(f"[{position:02d}/{len(records):02d}] {record['id']} already complete; skipping", flush=True)
             continue
@@ -177,7 +196,7 @@ def main():
         current = letterbox(current_raw, args.height, args.width)
         gt = letterbox(gt_raw, args.height, args.width)
         conditions = [letterbox(frame, args.height, args.width) for frame in condition_raw]
-        generator = torch.Generator(device="cuda").manual_seed(args.seed)
+        generator = torch.Generator(device="cuda").manual_seed(seed)
         call_args = {
             "prompt": record["prompt"],
             "negative_prompt": NEGATIVE_PROMPT,
@@ -220,7 +239,7 @@ def main():
         gt_array = np.asarray(gt)
         metrics = {
             **record,
-            "seed": args.seed,
+            "seed": seed,
             "denoising_steps": args.steps,
             "guardrail_disabled_for_synthetic_inputs": True,
             "num_generated_frames": len(frames),

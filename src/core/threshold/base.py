@@ -87,7 +87,9 @@ class Base:
         self.data = mujoco.MjData(self.model)
         self._r = None
 
-    def render(self):
+    def render(self, segment=False):
+        """RGB frame, or (segment=True) the per-pixel geom id map (int32, -1 = background),
+        rendered through the same warm-started renderer and flipped identically."""
         if self._r is None:
             self.model.vis.global_.offwidth = max(
                 self.model.vis.global_.offwidth,
@@ -117,16 +119,31 @@ class Base:
                 time.sleep(1.0 + attempt)
             else:
                 raise RuntimeError("renderer kept producing black frames")
-        self._r.update_scene(self.data, camera=self.cam)
-        frame = self._r.render()
+        if segment:
+            self._r.enable_segmentation_rendering()
+            try:
+                self._r.update_scene(self.data, camera=self.cam)
+                frame = self._r.render()[..., 0].astype(np.int32)
+            finally:
+                self._r.disable_segmentation_rendering()
+        else:
+            self._r.update_scene(self.data, camera=self.cam)
+            frame = self._r.render()
         # OSMesa returns the framebuffer bottom-up relative to the EGL path
         # (verified 2026-09-02 against an EGL reference frame); make both upright.
+        # The flip depends on the GL-context path, not on the render mode, so the
+        # segmentation map is flipped the same way (checked by the mask IoU gate).
         if os.environ.get("MUJOCO_GL", "").lower() == "osmesa":
             frame = frame[::-1].copy()
         return frame
 
-    def run(self, p, render=False):
-        """Returns dict with margin, outcome, event_frame, frames, trace."""
+    def geom_names(self):
+        """Geom id -> name ('' if unnamed), aligned with the segmentation ids."""
+        return [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, i) or ""
+                for i in range(self.model.ngeom)]
+
+    def run(self, p, render=False, segment=False):
+        """Returns dict with margin, outcome, event_frame, frames, trace (and seg when segment=True)."""
         self.set_params(p)
         mujoco.mj_resetData(self.model, self.data)
         self.init_state(p)
@@ -137,10 +154,13 @@ class Base:
                 mujoco.mj_step(self.model, self.data)
             self.freeze(False)
         frames = []
+        segs = []
         trace = []
         sub = int(round(self.capture_dt / self.model.opt.timestep))
         if render:
             frames.append(self.render())
+            if segment:
+                segs.append(self.render(segment=True))
         trace.append(self.observe())
         for k in range(self.n_frames - 1):
             for _ in range(sub):
@@ -148,9 +168,13 @@ class Base:
             trace.append(self.observe())
             if render:
                 frames.append(self.render())
+                if segment:
+                    segs.append(self.render(segment=True))
         trace = np.asarray(trace)
         out = self.labels(p, trace)
         out["frames"] = np.stack(frames) if render else None
+        if render and segment:
+            out["seg"] = np.stack(segs)
         out["trace"] = trace
         return out
 
