@@ -8,7 +8,6 @@ from pathlib import Path
 
 import imageio.v2 as imageio
 import numpy as np
-import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -19,6 +18,7 @@ HEIGHT = 480
 WIDTH = 832
 STEPS = 20
 GUIDANCE_SCALE = 7.0
+DEFAULT_HF_REVISION = "68c2b16b5c9dfef9949868c6fff6393c9b5fa941"
 VIEWS = {
     "ext1": "exterior_1_left",
     "ext2": "exterior_2_left",
@@ -44,7 +44,14 @@ class LocalBenignDataSafetyChecker:
 def parse_args():
     root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser()
-    parser.add_argument("--droid-root", type=Path, required=True)
+    parser.add_argument(
+        "--droid-root",
+        type=Path,
+        help="Optional full DROID checkout. The HF mini-dataset is used by default.",
+    )
+    parser.add_argument("--hf-repo", default="Parkprogrammer/droid-v2w-ep0008")
+    parser.add_argument("--hf-revision", default=DEFAULT_HF_REVISION)
+    parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--original-checkpoint", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -103,7 +110,7 @@ def read_view(droid_root: Path, meta, view: str, indices: np.ndarray) -> np.ndar
         reader.close()
 
 
-def load_clip(droid_root: Path, rows: pd.DataFrame, meta, job: dict):
+def load_droid_clip(droid_root: Path, rows, meta, job: dict):
     episode_rows = rows[rows.episode_index == job["episode"]].sort_values("frame_index")
     if episode_rows.empty:
         raise ValueError(f"Episode {job['episode']} is absent from file-000.parquet.")
@@ -123,6 +130,37 @@ def load_clip(droid_root: Path, rows: pd.DataFrame, meta, job: dict):
     else:
         output_frames = read_view(droid_root, meta, job["output_view"], indices)
     return input_frames[:CONDITION_FRAMES], output_frames[CONDITION_FRAMES:], indices
+
+
+def load_hf_clip(args, job: dict):
+    from huggingface_hub import hf_hub_download
+
+    path = hf_hub_download(
+        repo_id=args.hf_repo,
+        filename=job["clip"],
+        repo_type="dataset",
+        revision=args.hf_revision,
+        cache_dir=args.cache_dir,
+    )
+    with np.load(path, allow_pickle=False) as data:
+        condition = np.asarray(data["condition"])
+        target = np.asarray(data["target"])
+        indices = np.asarray(data["source_frame_indices"])
+        metadata = {
+            "episode": int(data["episode"]),
+            "window": str(data["window"]),
+            "input_view": str(data["input_view"]),
+            "output_view": str(data["output_view"]),
+            "task": str(data["task"]),
+            "fps": int(data["fps"]),
+        }
+    expected = {key: job[key] for key in ("episode", "window", "input_view", "output_view", "task")}
+    expected["fps"] = FPS
+    if metadata != expected:
+        raise ValueError(f"HF clip metadata mismatch for {job['id']}: {metadata!r}")
+    if len(condition) != CONDITION_FRAMES or len(target) != FUTURE_FRAMES:
+        raise ValueError(f"HF clip has invalid frame counts for {job['id']}.")
+    return condition, target, indices
 
 
 def to_uint8(frames) -> np.ndarray:
@@ -217,13 +255,20 @@ def main():
     unknown = selected - {job["id"] for job in jobs}
     if unknown:
         raise ValueError(f"Unknown ids: {sorted(unknown)}")
-    data = pd.read_parquet(args.droid_root / "data/chunk-000/file-000.parquet")
-    episode_meta = pd.read_parquet(
-        args.droid_root / "meta/episodes/chunk-000/file-000.parquet"
-    ).set_index("episode_index")
+    if args.droid_root is not None:
+        import pandas as pd
+
+        data = pd.read_parquet(args.droid_root / "data/chunk-000/file-000.parquet")
+        episode_meta = pd.read_parquet(
+            args.droid_root / "meta/episodes/chunk-000/file-000.parquet"
+        ).set_index("episode_index")
     prepared = []
     for job in jobs:
-        clip = load_clip(args.droid_root, data, episode_meta.loc[job["episode"]], job)
+        if args.droid_root is None:
+            clip = load_hf_clip(args, job)
+            job = {**job, "hf_dataset": args.hf_repo, "hf_revision": args.hf_revision}
+        else:
+            clip = load_droid_clip(args.droid_root, data, episode_meta.loc[job["episode"]], job)
         prepared.append((job, *clip))
         print(f"prepared {job['id']} frames={clip[2][0]}..{clip[2][-1]}", flush=True)
     if args.dry_run:

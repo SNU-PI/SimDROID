@@ -61,7 +61,7 @@ Cosmos-Policy comparison baseline. They are not the main VWM experiment.
 
 Python 3.11+, MuJoCo 3.11, PyTorch/CUDA, Diffusers with
 `Cosmos2VideoToWorldPipeline`, NumPy, Pillow, imageio/ffmpeg, matplotlib, and
-the Cosmos Predict2 2B Video2World checkpoint.
+the Hugging Face Hub client and Cosmos Predict2 2B Video2World checkpoint.
 
 Run MuJoCo EGL rendering and the PyTorch runner in **separate processes**;
 sharing one corrupts the encoder output silently. Data goes to `artifacts/`.
@@ -131,9 +131,9 @@ analytic-versus-simulation outcome gate.
 ## DROID Video2World examples
 
 `src/exp/reproduce_droid_v2w_ep0008.py` reproduces the five gallery examples
-through episode 0008. It reads synchronized video and robot state from
-`lerobot/droid_1.0.1` revision `0eabc778f959c54b8c5aa3626cc1128d2d2e54d4`,
-selects the same trajectory windows, and runs the same prompts and seeds from
+through episode 0008. By default it downloads the exact 49+16 frame clips from
+[`Parkprogrammer/droid-v2w-ep0008`](https://huggingface.co/datasets/Parkprogrammer/droid-v2w-ep0008)
+at pinned revision `68c2b16` and runs the prompts and seeds in
 `configs/droid_v2w_ep0001_ep0008.json`.
 
 | example | window | view | seed |
@@ -149,7 +149,6 @@ Each run supplies 49 observed frames and generates 16 future frames at
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python src/exp/reproduce_droid_v2w_ep0008.py \
-  --droid-root /path/to/droid_1.0.1 \
   --model-dir /path/to/Cosmos-Predict2-2B-Video2World \
   --original-checkpoint /path/to/model-480p-16fps.pt \
   --output-dir artifacts/droid_v2w_ep0008
@@ -159,6 +158,10 @@ Pass `--ids ep0001_approach_ext1_to_ext1_s1` to run one example, or
 `--dry-run` to validate the five DROID windows without loading Cosmos. Each
 output directory contains `prediction.mp4`, `comparison.gif`, and the exact
 inference metadata.
+
+The mini-dataset contains five selected examples, not eight episodes. To
+rebuild the same windows from a full `lerobot/droid_1.0.1` checkout instead,
+pass `--droid-root /path/to/droid_1.0.1`; this bypasses the HF clip download.
 
 ## Result
 
