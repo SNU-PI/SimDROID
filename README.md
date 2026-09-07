@@ -128,6 +128,38 @@ The manifest contains eight matched margins per scene, exact 16 FPS 832x480
 conditioning videos, MuJoCo endpoints at +0.3125 seconds, and an
 analytic-versus-simulation outcome gate.
 
+## DROID Video2World examples
+
+`src/exp/reproduce_droid_v2w_ep0008.py` reproduces the five gallery examples
+through episode 0008. It reads synchronized video and robot state from
+`lerobot/droid_1.0.1` revision `0eabc778f959c54b8c5aa3626cc1128d2d2e54d4`,
+selects the same trajectory windows, and runs the same prompts and seeds from
+`configs/droid_v2w_ep0001_ep0008.json`.
+
+| example | window | view | seed |
+|---|---|---|---:|
+| ep0001 | approach | ext1 → ext1 | 1 |
+| ep0002 | late | ext2 → ext2 | 1 |
+| ep0003 | interaction | ext1 → ext1 | 3 |
+| ep0007 | interaction | wrist → wrist | 1 |
+| ep0008 | interaction | ext2 → ext2 | 2 |
+
+Each run supplies 49 observed frames and generates 16 future frames at
+832×480 and 15 FPS with 20 denoising steps and guidance scale 7.0.
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python src/exp/reproduce_droid_v2w_ep0008.py \
+  --droid-root /path/to/droid_1.0.1 \
+  --model-dir /path/to/Cosmos-Predict2-2B-Video2World \
+  --original-checkpoint /path/to/model-480p-16fps.pt \
+  --output-dir artifacts/droid_v2w_ep0008
+```
+
+Pass `--ids ep0001_approach_ext1_to_ext1_s1` to run one example, or
+`--dry-run` to validate the five DROID windows without loading Cosmos. Each
+output directory contains `prediction.mp4`, `comparison.gif`, and the exact
+inference metadata.
+
 ## Result
 
 The corrected run removes the earlier timing and aspect confounds: native
