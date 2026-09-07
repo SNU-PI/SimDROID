@@ -147,21 +147,81 @@ at pinned revision `68c2b16` and runs the prompts and seeds in
 Each run supplies 49 observed frames and generates 16 future frames at
 832×480 and 15 FPS with 20 denoising steps and guidance scale 7.0.
 
+### 1. Clone and install
+
+```bash
+git clone --branch feat/probe-physics-vwm https://github.com/SNU-PI/SimDROID.git
+cd SimDROID
+
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install torch==2.7.0 --index-url https://download.pytorch.org/whl/cu128
+python -m pip install \
+  diffusers==0.36.0 transformers==5.16.1 huggingface_hub==1.29.0 \
+  numpy==2.2.6 pillow==12.0.0 imageio==2.37.2 imageio-ffmpeg==0.6.0 \
+  accelerate safetensors
+```
+
+These are the versions used for the recorded run. The default HF mini-dataset
+path does not require pandas, PyArrow, or a full DROID checkout.
+
+### 2. Download the model
+
+Accept access to
+[`nvidia/Cosmos-Predict2-2B-Video2World`](https://huggingface.co/nvidia/Cosmos-Predict2-2B-Video2World),
+then download the repository. The five DROID clips are public and need no HF
+login; authentication is required only for this gated model.
+
+```bash
+hf auth login
+hf download nvidia/Cosmos-Predict2-2B-Video2World \
+  --local-dir checkpoints/Cosmos-Predict2-2B-Video2World
+```
+
+The resulting directory must contain both the Diffusers component folders and
+`model-480p-16fps.pt`.
+
+### 3. Verify the inputs without a GPU
+
+This downloads the five pinned clips and checks their frame counts and
+metadata without loading Cosmos:
+
+```bash
+python src/exp/reproduce_droid_v2w_ep0008.py \
+  --model-dir checkpoints/Cosmos-Predict2-2B-Video2World \
+  --original-checkpoint checkpoints/Cosmos-Predict2-2B-Video2World/model-480p-16fps.pt \
+  --output-dir artifacts/droid_v2w_ep0008 \
+  --dry-run
+```
+
+### 4. Run inference
+
 ```bash
 CUDA_VISIBLE_DEVICES=0 python src/exp/reproduce_droid_v2w_ep0008.py \
-  --model-dir /path/to/Cosmos-Predict2-2B-Video2World \
-  --original-checkpoint /path/to/model-480p-16fps.pt \
+  --model-dir checkpoints/Cosmos-Predict2-2B-Video2World \
+  --original-checkpoint checkpoints/Cosmos-Predict2-2B-Video2World/model-480p-16fps.pt \
   --output-dir artifacts/droid_v2w_ep0008
 ```
 
-Pass `--ids ep0001_approach_ext1_to_ext1_s1` to run one example, or
-`--dry-run` to validate the five DROID windows without loading Cosmos. Each
-output directory contains `prediction.mp4`, `comparison.gif`, and the exact
-inference metadata.
+The model is loaded once and the five examples run sequentially. To run only
+one example, append:
+
+```bash
+--ids ep0001_approach_ext1_to_ext1_s1
+```
+
+Each example writes the following files under
+`artifacts/droid_v2w_ep0008/<example-id>/`:
+
+- `prediction.mp4`: the 16 generated future frames
+- `comparison.gif`: observed input / synchronized DROID GT / Cosmos output
+- `metadata.json`: prompt, seed, source revision, and inference settings
 
 The mini-dataset contains five selected examples, not eight episodes. To
 rebuild the same windows from a full `lerobot/droid_1.0.1` checkout instead,
-pass `--droid-root /path/to/droid_1.0.1`; this bypasses the HF clip download.
+install `pandas` and `pyarrow`, then pass
+`--droid-root /path/to/droid_1.0.1`; this bypasses the HF clip download.
 
 ## Result
 
