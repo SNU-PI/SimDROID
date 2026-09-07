@@ -17,6 +17,8 @@ import imageio.v2 as imageio
 import numpy as np
 from PIL import Image
 
+from exp.pvr_heatmap_figs import panels as heat_panels
+
 # ------------------------------------------------------------------ data helpers
 
 def load(p):
@@ -177,6 +179,20 @@ def stacked(rows, w=640):
         x = ml + j * 190
         p.append(f'<rect x="{x}" y="{y}" width="14" height="14" class="{cls}"/><text x="{x + 20}" y="{y + 12}" class="legend">{lab}</text>')
     return f'<svg viewBox="0 0 {w} {h}" class="chart" role="img" aria-label="variance decomposition">' + "".join(p) + "</svg>"
+
+
+def heat_row(root, scene, cond, title, reading):
+    hp = heat_panels(root, scene, cond)
+    def fig(key, cap):
+        return f'<figure><img src="{jpeg_b64(hp[key], 416, 82)}" alt="{cap}"><figcaption>{cap}</figcaption></figure>'
+    return ('<div class="scene"><div class="head"><h3>' + title + '</h3><span class="fam">' + hp["id"] + f' · seed {len(hp["seeds"])}개 평균 · step {hp["step"]} · 블록 {hp["block"]}</span></div>'
+            '<div class="frames">'
+            + fig("frame", "① 조건 마지막 프레임과 영역 윤곽 — 노랑 = 관련 구조, 보라 = 미끼, 흰색 = 공 (지형의 초록은 씬 자체의 색)")
+            + fig("grad", "② 그래디언트 |∂s/∂x| — s = 예측된 공 위치 점수. 밝을수록 그 픽셀이 점수를 많이 움직임")
+            + fig("wrong", f"③ 같은 방식, 점수 대신 무관한 스칼라(잠재 평균). ②와의 상관 {hp['corr_grad_wrong']:.2f}")
+            + fig("att_ball", "④ 어텐션 — 예측된 공의 토큰이 조건 프레임 1–4 토큰을 읽는 양(후기 블록)")
+            + fig("att_all", "⑤ 어텐션 — 예측 프레임의 모든 토큰 평균")
+            + '</div><div class="reading">' + reading + '</div></div>')
 
 
 # ------------------------------------------------------------------ scene schematics (SVG)
@@ -569,6 +585,16 @@ def build(root: Path, out: Path):
     # cross-scene: attribution
     P.append('<div class="scene"><div class="head"><h3>세 씬 공통 ② — 열지도는 의존을 국소화하지 못했다</h3><span class="pill none">H1 0/3 씬</span></div>'
              '<div class="prose"><p>②에서 확인된 "관련 구조 의존"이 입력의 그 자리에서 보이는가? 사전 등록 H1(핵심 셀에서 관련 구조의 그래디언트 밀도 &gt; 미끼)은 <b>세 씬 모두 불성립</b>. 원시 단일 step 그래디언트는 배경(하늘·뒷벽)에 지배되고 점수와 무관한 스칼라(잠재 평균)의 지도와 0.64–0.69 상관이다 — 즉 점수 특이적 신호가 아니다. 어텐션 라우팅은 예측된 공의 토큰이 <b>자기 과거</b>를 압도적으로 읽고(밀도 6–17), 관련 구조 &gt; 미끼의 방향성만 남긴다(11/12 셀, 비 1.5–4.4). 그러나 collide의 벽(0.13 &lt; 미끼 공 0.63)에서 깨져, 인과 관련성보다 "진행 방향의 공 같은 물체"를 고르는 물체 종류 편향이 의심된다. 사전 등록대로 열지도는 <b>선별 신호</b>로 강등하고, 반사실 편집을 주지표로 삼는다.</p></div>'
+             + '</div>')
+    P.append('<div class="scene" style="border:none;background:transparent;padding:0"><div class="head"><h3>열지도는 실제로 어떻게 보였나</h3></div>'
+             '<div class="prose"><p>아래는 씬마다 한 조건(관련 구조가 결과를 바꾸는 셀)의 열지도를 seed 4개 평균으로 마지막 조건 프레임 위에 겹친 것이다. 보는 법: ②가 ①의 노랑 윤곽 안에서 밝아야 "관련 구조를 국소화했다"이고, ②와 ③이 닮았으면 그 지도는 점수와 무관한 일반 민감도다. ④는 예측된 공이 조건 프레임의 어디를 읽었는지다.</p></div></div>')
+    P.append(heat_row(root, 'hill', 'B', 'Hill · B (언덕 14 cm, 실제는 되돌아옴)',
+             '②의 질량은 하늘·뒷벽·바닥 무늬에 퍼져 있고 언덕(노랑 윤곽)은 배경보다 어둡다. ③이 ②와 거의 같다 — 이 지도는 "무엇이 공의 미래를 정하는가"가 아니라 "입력이 얼마나 흔들리면 잠재가 흔들리는가"를 그린 것이다. ④에서 밝은 곳은 공의 과거 위치와 지지면 띠이고 언덕은 균일 이하다.'))
+    P.append(heat_row(root, 'collide', 'B', 'Collide · B (표적 S = 2, 실제는 되튐)',
+             '표적 공(노랑 윤곽)에 그래디언트가 조금 더 모이지만(밀도 1.8 vs 미끼 1.0) 배경이 여전히 더 밝고, ③과의 상관이 높다. ④에서는 예측된 공이 자기 과거를 압도적으로 읽고, 진행 방향의 표적 공을 뒤쪽 미끼 공보다 더 읽는다(비 1.5) — 이것이 남은 방향성 신호다. 표적 오른쪽의 밝은 점들은 생성 영상에서 공이 도달한 자리와 같은 위치의 조건 토큰으로, 내용이 아니라 위치를 따라 읽는 성분이다.'))
+    P.append(heat_row(root, 'edge', 'A', 'Edge · A (모서리 가까움, 실제는 프레임 12에 낙하)',
+             '모서리(노랑 윤곽)보다 판의 왼쪽 끝(보라)이 오히려 밝고, 배경이 가장 밝다. ④의 공 토큰은 판 표면과 자기 과거를 읽으며, 모서리는 미끼보다 조금 더 읽되(비 1.6) 균일 이하다. 반사실 실험은 모델이 모서리에 반응함을 보였으므로, 국소화 실패는 모델이 아니라 이 지도 방식의 한계다.'))
+    P.append('<div class="scene"><div class="head"><h3>영역별 집계표</h3></div>'
              + att_table("hill", "Hill (조건 6 × seed 4)") + att_table("collide", "Collide") + att_table("edge", "Edge") + '</div>')
 
     # validity
