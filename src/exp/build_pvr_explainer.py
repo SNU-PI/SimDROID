@@ -195,6 +195,42 @@ def heat_row(root, scene, cond, title, reading):
             + '</div><div class="reading">' + reading + '</div></div>')
 
 
+def heatmap_primer():
+    """Plain-language explanation of how the two heatmaps are built, with one pipeline diagram."""
+    d = []
+    def box(x, y, w, h, title, sub, cls="lbox"):
+        d.append(f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="7" class="{cls}"/>')
+        d.append(f'<text x="{x + w / 2}" y="{y + 24}" class="ltitle" text-anchor="middle" style="font-size:13px">{title}</text>')
+        d.append(f'<text x="{x + w / 2}" y="{y + 42}" class="ldesc" text-anchor="middle">{sub}</text>')
+    box(10, 20, 120, 56, "조건 5프레임", "사건 0.25 s 전까지")
+    box(160, 20, 110, 56, "VAE 인코더", "픽셀 → 잠재 2프레임")
+    box(300, 20, 150, 56, "DiT (35 step 중 1 step)", "잡음 상태 고정")
+    box(480, 20, 110, 56, "x̂₀ 예측", "깨끗한 미래 추정")
+    box(620, 20, 110, 56, "탐지기 s", "마지막 프레임의 공 위치")
+    for x0, x1 in ((130, 160), (270, 300), (450, 480), (590, 620)):
+        d.append(f'<path d="M{x0},48 h{x1 - x0}" class="edge arr"/>')
+    d.append('<path d="M640,90 q-300,60 -560,0" class="edge rel arr" style="stroke-dasharray:6 4"/>')
+    d.append('<text x="360" y="128" class="stag rel" text-anchor="middle">그래디언트 열지도 = 각 픽셀을 살짝 바꿨을 때 s가 얼마나 변하는가 (역전파로 한 번에 계산)</text>')
+    d.append('<rect x="300" y="150" width="150" height="46" rx="7" class="lbox l2"/><text x="375" y="170" class="ltitle" text-anchor="middle" style="font-size:13px">DiT 블록 안</text><text x="375" y="187" class="ldesc" text-anchor="middle">예측 공 토큰 Q · 조건 토큰 K</text>')
+    d.append('<path d="M300,173 q-90,0 -180,-100" class="edge dec arr" style="stroke-dasharray:6 4"/>')
+    d.append('<text x="120" y="215" class="stag dec" text-anchor="start">어텐션 열지도 = 예측된 공의 토큰이 조건 프레임의 어느 토큰을 얼마나 참고했는가 (계산된 비율을 그대로 읽음)</text>')
+    svg = '<svg viewBox="0 0 750 230" class="schem" role="img" aria-label="heatmap pipeline" style="max-width:760px">' + "".join(d) + "</svg>"
+    return (
+        '<div class="scene"><div class="head"><h3>열지도는 어떻게 만들었나 — 쉬운 설명</h3></div>'
+        '<div class="prose"><p><b>알고 싶은 것.</b> 모델이 미래를 그릴 때 입력 화면의 <i>어느 부분을 얼마나 썼는가</i>를 화면 위에 색으로 칠하는 것이 열지도다. 우리는 서로 다른 원리의 지도 두 가지를 만들었다.</p></div>'
+        '<div style="margin:.8rem 0">' + svg + '</div>'
+        '<div class="grid3" style="grid-template-columns:repeat(2,minmax(0,1fr))">'
+        '<div class="step"><div class="n">지도 1 — 그래디언트(민감도) 지도</div>'
+        '<p><b>비유.</b> 입력 사진의 픽셀 하나를 아주 조금 밝게 해 보고, 그때 모델이 예측한 공의 위치가 얼마나 움직이는지를 잰다. 이것을 모든 픽셀에 대해 반복하면 "이 픽셀이 예측을 얼마나 흔드는가"의 지도가 된다. 실제로는 하나씩 시험하지 않고 미분(역전파)으로 한 번에 계산한다.</p>'
+        '<p><b>필요한 준비 둘.</b> (1) 출력이 "숫자 하나"여야 미분할 수 있다. 그래서 마지막 예측 프레임의 잠재에서 공의 가로 위치를 읽는 작은 탐지기(16채널 로지스틱 회귀 → 뾰족한 softmax 중심)를 미리 학습해 붙였다. 실제 클립에서 오차 중앙값 약 1셀. (2) 확산 모델은 35단계에 걸쳐 그림을 다듬으므로 전체를 미분하면 비용이 너무 크다. 그래서 한 단계(20·24·28)에서 잡음 상태를 고정하고, 그 단계가 내놓는 "깨끗한 그림 추정" x̂₀까지만 미분했다.</p>'
+        '<p><b>믿어도 되는지 확인하는 법.</b> 공 위치 점수 대신 아무 의미 없는 숫자(잠재의 평균)로 같은 미분을 해 본다. 두 지도가 닮으면 그 지도는 "공의 미래를 정하는 곳"이 아니라 "모델이 입력 전반에 민감한 곳"을 그린 것이다. 이번 결과가 그랬다(상관 0.64–0.85).</p></div>'
+        '<div class="step"><div class="n">지도 2 — 어텐션(참고) 지도</div>'
+        '<p><b>비유.</b> 트랜스포머는 화면을 16×16 픽셀 조각(토큰)으로 나누고, 매 층에서 각 조각이 다른 조각들을 "얼마나 참고하는가"의 비율을 계산해 정보를 섞는다. 이 비율은 모델이 실제로 계산하는 값이라 미분 없이 그대로 꺼내 읽을 수 있다.</p>'
+        '<p><b>무엇을 그렸나.</b> 예측 프레임에서 공이 있는 조각들이 조건 프레임(모델 입력)의 어느 조각을 얼마나 참고했는지를, 28개 블록 중 후기 블록에서 읽어 조건 프레임 위에 칠했다. 공 조각의 위치는 생성된 영상에서 빨간 공을 찾아 정했다.</p>'
+        '<p><b>한계.</b> "참고했다"와 "그 정보로 결과를 정했다"는 다르다. 어텐션은 정보가 어디서 어디로 흘렀는지의 배관도이지, 그 정보가 결과에 쓰였다는 증명이 아니다. 그래서 어텐션의 "관련 &gt; 미끼" 방향성은 반사실 결과와 맞을 때만 해석했다.</p></div></div>'
+        '<div class="callout" style="margin-top:1rem"><b>영역별로 더하는 법.</b> 시뮬레이터가 각 픽셀이 공·관련 구조·미끼·지지면·로봇팔·잡동사니·배경 중 무엇인지 알려 주므로(세그멘테이션), 지도의 밝기를 영역별로 합산한다. 넓은 영역은 합이 커지므로 면적으로 나눈 <b>밀도</b>(1 = 화면 전체에 고르게 퍼진 경우)로 비교한다. 실행 전에 정한 통과 기준은 "관련 구조의 밀도 &gt; 미끼의 밀도"였고, 세 씬 모두 통과하지 못했다.</div></div>')
+
+
 # ------------------------------------------------------------------ scene schematics (SVG)
 
 def schematic(scene):
@@ -586,6 +622,7 @@ def build(root: Path, out: Path):
     P.append('<div class="scene"><div class="head"><h3>세 씬 공통 ② — 열지도는 의존을 국소화하지 못했다</h3><span class="pill none">H1 0/3 씬</span></div>'
              '<div class="prose"><p>②에서 확인된 "관련 구조 의존"이 입력의 그 자리에서 보이는가? 사전 등록 H1(핵심 셀에서 관련 구조의 그래디언트 밀도 &gt; 미끼)은 <b>세 씬 모두 불성립</b>. 원시 단일 step 그래디언트는 배경(하늘·뒷벽)에 지배되고 점수와 무관한 스칼라(잠재 평균)의 지도와 0.64–0.69 상관이다 — 즉 점수 특이적 신호가 아니다. 어텐션 라우팅은 예측된 공의 토큰이 <b>자기 과거</b>를 압도적으로 읽고(밀도 6–17), 관련 구조 &gt; 미끼의 방향성만 남긴다(11/12 셀, 비 1.5–4.4). 그러나 collide의 벽(0.13 &lt; 미끼 공 0.63)에서 깨져, 인과 관련성보다 "진행 방향의 공 같은 물체"를 고르는 물체 종류 편향이 의심된다. 사전 등록대로 열지도는 <b>선별 신호</b>로 강등하고, 반사실 편집을 주지표로 삼는다.</p></div>'
              + '</div>')
+    P.append(heatmap_primer())
     P.append('<div class="scene" style="border:none;background:transparent;padding:0"><div class="head"><h3>열지도는 실제로 어떻게 보였나</h3></div>'
              '<div class="prose"><p>아래는 씬마다 한 조건(관련 구조가 결과를 바꾸는 셀)의 열지도를 seed 4개 평균으로 마지막 조건 프레임 위에 겹친 것이다. 보는 법: ②가 ①의 노랑 윤곽 안에서 밝아야 "관련 구조를 국소화했다"이고, ②와 ③이 닮았으면 그 지도는 점수와 무관한 일반 민감도다. ④는 예측된 공이 조건 프레임의 어디를 읽었는지다.</p></div></div>')
     P.append(heat_row(root, 'hill', 'B', 'Hill · B (언덕 14 cm, 실제는 되돌아옴)',
