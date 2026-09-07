@@ -16,6 +16,7 @@ blue ball, green cable-cover hump; nothing else in frame is red, blue or green.
 from __future__ import annotations
 
 import os
+import warnings
 import re
 from pathlib import Path
 
@@ -25,6 +26,7 @@ HERE = Path(__file__).resolve().parent
 MENAGERIE = Path(os.environ.get(
     "MENAGERIE_PANDA",
     "data/stage0/mujoco_menagerie/franka_emika_panda"))   # MENAGERIE_PANDA env var overrides
+_WARNED = False
 _BAKED_PATH = "/data/pgc/simdroid/stage0/mujoco_menagerie/franka_emika_panda"
 FLOOR_GEOM = '<geom name="floor" type="plane" size="3 3 0.1" material="floor"/>'
 
@@ -49,6 +51,12 @@ FRANKA_POS = "0.05 0.95 -0.43"
 def franka_blocks(pos=FRANKA_POS):
     """(asset xml, body xml) for the static Panda; empty strings if meshes are absent."""
     if not (MENAGERIE / "assets").is_dir():
+        global _WARNED
+        if not _WARNED:
+            warnings.warn(f"Franka meshes not found under {MENAGERIE} (set MENAGERIE_PANDA to mujoco_menagerie/"
+                          "franka_emika_panda); the workbench scenes are built WITHOUT the robot arm, so their "
+                          "pixels differ from the published runs.", stacklevel=2)
+            _WARNED = True
         return "", ""
     asset = (HERE / "franka_asset.xml").read_text().replace(_BAKED_PATH, str(MENAGERIE))
     body = (HERE / "franka_body.xml").read_text()

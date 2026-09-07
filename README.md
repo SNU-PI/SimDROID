@@ -112,7 +112,7 @@ Nothing in the repo hard-codes a machine path; the wrappers and page builders re
 | `COSMOS_SNAPSHOT` | directory of the `nvidia/Cosmos-Predict2-2B-Video2World` snapshot (contains `model-480p-16fps.pt`) | required by `run_*_vwm.sh` |
 | `COSMOS_PY` | python of the Cosmos env | `python` |
 | `HF_HOME`, `CUDA_VISIBLE_DEVICES` | as usual | `~/.cache/huggingface`, `0` |
-| `MENAGERIE_PANDA` | `mujoco_menagerie/franka_emika_panda` directory (workbench scenes) | `data/stage0/mujoco_menagerie/franka_emika_panda` |
+| `MENAGERIE_PANDA` | `mujoco_menagerie/franka_emika_panda` directory (`git clone https://github.com/google-deepmind/mujoco_menagerie`). **Required for the published pixels**: without it the workbench scenes are built without the Franka arm (a warning is emitted) | `data/stage0/mujoco_menagerie/franka_emika_panda` |
 | `VWM_ARTIFACTS` | artifacts root for the page builders | `artifacts` |
 | `VWM_EXTERNAL`, `DILA_DIR`, `VJEPA_DIR`, `VJEPA_CKPT` | latent-track assets | `external/...`, `data/stage0/vjepa2-ac-vitg.pt` |
 | `SIMDROID_ENV`, `VERA_ENV`, `VERA_PY` | env prefixes for `run_vjepa_ac.sh` / `run_dila.sh` | required / `python` |
