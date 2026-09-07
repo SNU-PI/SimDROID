@@ -5,6 +5,8 @@ self-contained HTML page for scene feedback before any model run is launched.
 """
 from __future__ import annotations
 
+import os
+
 import base64
 import html
 import io
@@ -16,7 +18,7 @@ import imageio.v2 as imageio
 import numpy as np
 from PIL import Image
 
-ROOT = Path("/mnt/nvme/migration/jihun/SimDROID/code_vwm/artifacts/phase_b")
+ROOT = Path(os.environ.get("VWM_ARTIFACTS", "artifacts")) / "phase_b"
 SHOW_S = (0.50, 0.79, 0.95, 1.05, 1.26, 2.00)
 GIF_S = (0.50, 0.95, 1.05, 2.00)
 STRIP_FRAMES = (4, 12, 20)
@@ -279,4 +281,4 @@ document.querySelectorAll('figure.gif img').forEach(img => {{
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "/mnt/nvme/migration/jihun/SimDROID/Materials/phase_b_scenes_2026-09-03.html")
+    main(sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "phase_b_scenes.html"))

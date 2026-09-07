@@ -1,3 +1,4 @@
+import os
 """Splice the prompt-contrast (oracle) results into the Bundle A artifact as section 09.
 
 Reads analysis/oracle_samples.csv (prompt arms) and analysis/samples.csv (neutral arm)
@@ -14,7 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-ROOT = Path("/mnt/nvme/migration/jihun/SimDROID/code_vwm/artifacts/bundle_a")
+ROOT = Path(os.environ.get("VWM_ARTIFACTS", "artifacts")) / "bundle_a"
 ASSETS = ROOT / "analysis" / "artifact_assets"
 FAMS = (("hill_roll", "A1 rolling hill"), ("two_ball", "A2 two-ball"), ("pendulum_rod", "A3 rod pendulum"))
 FLANKS = (0.95, 1.05)

@@ -1,9 +1,10 @@
+import os
 """Splice Cosmos evaluation results into the Bundle A artifact HTML."""
 import base64, json, re, sys
 from pathlib import Path
 import numpy as np
 
-ROOT = Path("/mnt/nvme/migration/jihun/SimDROID/code_vwm/artifacts/bundle_a")
+ROOT = Path(os.environ.get("VWM_ARTIFACTS", "artifacts")) / "bundle_a"
 ASSETS = ROOT / "analysis" / "artifact_assets"
 
 def b64(p):

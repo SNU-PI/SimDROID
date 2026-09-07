@@ -1,3 +1,4 @@
+import os
 """Build result plots + stats JSON for the Bundle A artifact from analysis outputs."""
 import csv, json, sys
 from pathlib import Path
@@ -6,7 +7,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-ROOT = Path("/mnt/nvme/migration/jihun/SimDROID/code_vwm/artifacts/bundle_a")
+ROOT = Path(os.environ.get("VWM_ARTIFACTS", "artifacts")) / "bundle_a"
 OUT = ROOT / "analysis" / "artifact_assets"
 OUT.mkdir(parents=True, exist_ok=True)
 

@@ -26,6 +26,8 @@ stored as (256 tokens, 768) per frame (raster order of the 16x16 grid).
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import json
 import sys
@@ -37,7 +39,7 @@ import torch
 
 from gen.vjepa_spec import SIZE
 
-REPO = Path("/mnt/nvme/migration/jihun/SimDROID/external/DiLA")
+REPO = Path(os.environ.get("DILA_DIR", "external/DiLA"))
 CKPT = REPO / "checkpoints" / "model.pt"
 DINO = sorted((REPO / "pretrained" / "models--facebook--dinov2-with-registers-base" / "snapshots").glob("*"))
 DECODER = REPO / "pretrained" / "decoders" / "dinov2" / "wReg_base" / "ViTXL" / "dinov2_decoder.pt"

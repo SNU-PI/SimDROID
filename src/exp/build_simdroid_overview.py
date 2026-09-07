@@ -9,14 +9,16 @@ Usage: PYTHONPATH=src python src/exp/build_simdroid_overview.py <dst.html>
 """
 from __future__ import annotations
 
+import os
+
 import base64, io, json, math, sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-ROOT = Path("/mnt/nvme/migration/jihun/SimDROID/code_vwm/artifacts")
-CODE_OUT = Path("/mnt/nvme/migration/jihun/SimDROID/code/out")
+ROOT = Path(os.environ.get("VWM_ARTIFACTS", "artifacts"))
+CODE_OUT = Path(os.environ.get("SIMDROID_CODE_OUT", "../code/out"))
 
 
 # ---------------------------------------------------------------- assets

@@ -24,8 +24,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-VJEPA_DIR = os.environ.get("VJEPA_DIR", "/mnt/nvme/migration/jihun/SimDROID/external/vjepa2")
-VJEPA_CKPT = os.environ.get("VJEPA_CKPT", "/mnt/nvme/migration/jihun/SimDROID/data/stage0/vjepa2-ac-vitg.pt")
+VJEPA_DIR = os.environ.get("VJEPA_DIR", "external/vjepa2")
+VJEPA_CKPT = os.environ.get("VJEPA_CKPT", "data/stage0/vjepa2-ac-vitg.pt")
 sys.path.insert(0, VJEPA_DIR)
 
 from gen.vjepa_spec import N_STEPS, POSE, SIZE  # noqa: E402

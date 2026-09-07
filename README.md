@@ -57,6 +57,117 @@ artifacts/                              generated data and media; never committe
 `cosmos_policy_pixels.py` and `cosmos_policy_sweep.py` retain the initial
 Cosmos-Policy comparison baseline. They are not the main VWM experiment.
 
+## feat/commonsense — scene library, frozen readouts, and heatmaps (2026-09-07)
+
+This branch is a **superset of `feat/probe-physics-vwm`** (linear history; a fast-forward
+from its tip). Every command in the sections below still works unchanged. It adds three
+things: a larger MuJoCo scene library, frozen pixel readouts with paired counterfactual
+statistics, and an attribution (heatmap) track for Cosmos-Predict2-2B Video2World.
+
+### What is added
+
+```text
+src/core/threshold/
+  base.py                     Base.render(segment=True) -> MuJoCo segmentation ids; run(..., segment=True)
+  workbench.py                Franka workbench dressing shared by the Phase A/B/PVR scenes (MENAGERIE_PANDA)
+  rolling_hill.py two_ball.py rod_pendulum.py      Bundle A threshold scenes on a shared saturation axis S
+  kin_roll.py                 P0 kinematic control (flat rolling)
+  support_edge.py             Phase B: support-edge departure (contact loss)
+  hill_decoy.py two_ball_decoy.py support_edge_decoy.py
+                              PVR scenes: same physics + a look-alike decoy behind the ball,
+                              fovy-26 camera, threshold extensions (wall / flat / joint / step / tilt)
+
+src/gen/
+  bundle_a_spec.py phase_a_spec.py phase_b_spec.py pvr_spec.py   condition designs (S ladders, 2x2 edits, seeds)
+  make_bundle_a.py make_phase_a.py make_phase_b.py make_pvr.py   generators: inputs npz + GT mp4 + manifest (+ seg npz)
+  make_vjepa_inputs.py make_vera_inputs.py vjepa_spec.py         inputs for the latent tracks (V-JEPA 2-AC, VERA)
+  render.py                   roll(..., segment=True) returns per-frame segmentation + geom/body names
+
+src/exp/
+  cosmos_v2w_sweep.py         --seeds / --output-root: many seeds per process (model loads once)
+  analyze_bundle_a.py analyze_pvr.py verify_*.py               frozen adjudicators, GT self-tests, paired effects, RI
+  pvr_regions.py              segmentation -> regions (ball / relevant structure / decoy / support / franka / clutter / background)
+  cosmos_attrib.py            heatmap track: single-step x0 gradient + attention routing + sanity checks + aggregate
+  pvr_heatmap_figs.py         seed-averaged overlay figures of the stored maps
+  build_pvr_report.py build_pvr_explainer.py                    result / explainer pages (self-contained HTML)
+  rollout_vjepa_ac.py rollout_dila.py analyze_vjepa_ac.py ...   latent tracks (see the dated sections below)
+
+run_bundle_a_vwm.sh run_phase_a_vwm.sh run_phase_b_vwm.sh run_pvr_vwm.sh   Cosmos collection wrappers
+run_vjepa_ac.sh run_dila.sh                                                 latent-track chains
+```
+
+### Environments and variables
+
+Two Python environments are used, in separate processes:
+
+| env | used for | needs |
+|---|---|---|
+| MuJoCo env | scene generation, verification, readouts, pages | mujoco >= 3.1, numpy, scipy, imageio(+ffmpeg), matplotlib, Pillow; OSMesa (`MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa`, `apt-get install libosmesa6`) or EGL |
+| Cosmos env | `cosmos_v2w_sweep.py`, `cosmos_attrib.py` | torch (CUDA), diffusers >= 0.35 with `Cosmos2VideoToWorldPipeline`, transformers, imageio, matplotlib |
+
+Nothing in the repo hard-codes a machine path; the wrappers and page builders read these variables:
+
+| variable | meaning | default |
+|---|---|---|
+| `COSMOS_SNAPSHOT` | directory of the `nvidia/Cosmos-Predict2-2B-Video2World` snapshot (contains `model-480p-16fps.pt`) | required by `run_*_vwm.sh` |
+| `COSMOS_PY` | python of the Cosmos env | `python` |
+| `HF_HOME`, `CUDA_VISIBLE_DEVICES` | as usual | `~/.cache/huggingface`, `0` |
+| `MENAGERIE_PANDA` | `mujoco_menagerie/franka_emika_panda` directory (workbench scenes) | `data/stage0/mujoco_menagerie/franka_emika_panda` |
+| `VWM_ARTIFACTS` | artifacts root for the page builders | `artifacts` |
+| `VWM_EXTERNAL`, `DILA_DIR`, `VJEPA_DIR`, `VJEPA_CKPT` | latent-track assets | `external/...`, `data/stage0/vjepa2-ac-vitg.pt` |
+| `SIMDROID_ENV`, `VERA_ENV`, `VERA_PY` | env prefixes for `run_vjepa_ac.sh` / `run_dila.sh` | required / `python` |
+| `SIMDROID_CODE_SRC`, `SIMDROID_CODE_OUT`, `SIMDROID_PAIRS` | team-repo assets used only by `render_pusher_strips.py` and the overview page | `../code/src`, `../code/out`, `../data/episodes_dense/pairs` |
+
+### Quick start: PVR (predictive visual reliance) PoC
+
+Three scenes (Hill / Collide / Edge-Fall), each with a relevant edit (changes the true future),
+a same-type decoy edit behind the ball (does not), no-decoy cells, a decision-variable ladder and
+threshold extensions; 15 / 15 / 18 conditions x 12 seeds, the same seeds in every condition.
+
+```bash
+# 1. scenes -> artifacts/pvr/{hill,collide,edge}/ (inputs npz, seg npz, GT/condition mp4, manifest, previews)
+MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa PYTHONPATH=src python src/gen/make_pvr.py
+PYTHONPATH=src python src/exp/verify_pvr.py                 # physics identity vs the base classes, gates, mask IoU
+PYTHONPATH=src python src/exp/analyze_pvr.py --gt-selftest-only
+
+# 2. Cosmos rollouts (Cosmos env; one process per scene, all seeds inside)
+export COSMOS_SNAPSHOT=/path/to/models--nvidia--Cosmos-Predict2-2B-Video2World/snapshots/<hash>
+export COSMOS_PY=/path/to/cosmos_env/bin/python
+./run_pvr_vwm.sh hill 1 2 3 4 5 6 7 8 9 10 11 12          # same for collide, edge
+
+# 3. readout: continuous event scores, paired effects with bootstrap CIs, Relevance Index, curves, sheets
+PYTHONPATH=src python src/exp/analyze_pvr.py --scenes hill collide edge
+
+# 4. heatmaps (Cosmos env, GPU): gradient + attention for 6 conditions x 4 seeds, then aggregate
+PYTHONPATH=src $COSMOS_PY src/exp/cosmos_attrib.py attribute --scenes hill \
+  --model-dir $COSMOS_SNAPSHOT --original-checkpoint $COSMOS_SNAPSHOT/model-480p-16fps.pt \
+  --conds A B C D XW XF --seeds 1 2 3 4 --steps 20 24 28 --wrong-target --randomize
+PYTHONPATH=src $COSMOS_PY src/exp/cosmos_attrib.py aggregate --scenes hill
+
+# 5. pages
+PYTHONPATH=src python src/exp/build_pvr_report.py --out artifacts/pvr/report.html
+PYTHONPATH=src python src/exp/build_pvr_explainer.py --out artifacts/pvr/explainer.html
+```
+
+The heatmap track re-implements the pipeline's sampling loop (`Replay`) so a step can be frozen
+and differentiated: conditioning frames -> fp32 VAE encoder -> DiT (CFG) -> x0 prediction ->
+latent ball probe (fitted once per scene from GT latents + segmentation) -> `|ds/dx|` over the five
+conditioning frames; attention routing re-computes softmax(QK^T) for the predicted-frame queries
+in every block. Maps are aggregated by segmentation region with area-normalised densities, and
+checked with an irrelevant-scalar control, last-k-block randomisation, seed CV and a Sobel baseline.
+Read the sanity checks before the maps: in our runs the raw single-step gradient correlated
+0.64-0.85 with the irrelevant-scalar map and did not localise the relevant structure; the
+counterfactual (paired-edit) statistics from step 3 are the primary measurement.
+
+### Using this branch from `feat/probe-physics-vwm`
+
+`git checkout feat/commonsense` (or merge it; it fast-forwards). The original six environments,
+`make_sweep.py`, `cosmos_v2w_sweep.py` and the analysis scripts are untouched except for
+backward-compatible additions (`Base.render(segment=False)`, `roll(..., segment=False)`,
+`--seeds/--output-root` on the sweep runner). Generated data lives under `artifacts/` and is
+never committed.
+
+
 ## Environment
 
 Python 3.11+, MuJoCo 3.11, PyTorch/CUDA, Diffusers with

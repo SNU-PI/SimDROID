@@ -8,6 +8,8 @@ Usage: build_phase_a_page.py <analysis_dir> <dst.html>
 """
 from __future__ import annotations
 
+import os
+
 import base64, csv, io, json, sys
 from pathlib import Path
 
@@ -17,8 +19,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-ROOT = Path("/mnt/nvme/migration/jihun/SimDROID/code_vwm/artifacts")
-EXT = Path("/mnt/nvme/migration/jihun/SimDROID/external")
+ROOT = Path(os.environ.get("VWM_ARTIFACTS", "artifacts"))
+EXT = Path(os.environ.get("VWM_EXTERNAL", "external"))
 INK, SUB, LINE = "#21252C", "#626B78", "#E1E4EA"
 ACCENT, BLUE, OK, WARN = "#C4402C", "#3E68A8", "#256E46", "#8A5A14"
 plt.rcParams.update({"font.size": 10.5, "axes.edgecolor": LINE, "axes.labelcolor": INK, "xtick.color": SUB,

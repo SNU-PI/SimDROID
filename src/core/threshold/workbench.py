@@ -24,7 +24,7 @@ from core.threshold.base import wrap
 HERE = Path(__file__).resolve().parent
 MENAGERIE = Path(os.environ.get(
     "MENAGERIE_PANDA",
-    "/mnt/nvme/migration/jihun/SimDROID/data/stage0/mujoco_menagerie/franka_emika_panda"))
+    "data/stage0/mujoco_menagerie/franka_emika_panda"))   # MENAGERIE_PANDA env var overrides
 _BAKED_PATH = "/data/pgc/simdroid/stage0/mujoco_menagerie/franka_emika_panda"
 FLOOR_GEOM = '<geom name="floor" type="plane" size="3 3 0.1" material="floor"/>'
 

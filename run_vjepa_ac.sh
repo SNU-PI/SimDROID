@@ -4,8 +4,8 @@
 set -u
 cd "$(dirname "$0")"
 MANIFEST=$1; ROOT=$2; shift 2
-SIM=/mnt/nvme/migration/jihun/envs/miniforge3/envs/simdroid
-TORCH=/mnt/nvme/migration/jihun/envs/vera
+SIM=${SIMDROID_ENV:?set SIMDROID_ENV to the MuJoCo/OSMesa conda env prefix}
+TORCH=${VERA_ENV:?set VERA_ENV to the torch env prefix used for V-JEPA 2-AC}
 mkdir -p "$ROOT"
 STATUS="$ROOT/chain.log"
 echo "$(date +%F_%T) CHAIN_START manifest=$MANIFEST" >> "$STATUS"

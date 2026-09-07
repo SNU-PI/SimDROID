@@ -1,3 +1,4 @@
+import os
 """Render lo/hi matched-pair strips for the five pusher families (team repo, R3-79 dense pairs).
 
 Reads DENSE_DIR/pairs/<family>/<param>/0000_{lo,hi}.npz (PNG-in-npz, 640x480, 50 Hz) and writes one
@@ -9,11 +10,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-TEAM_SRC = Path("/mnt/nvme/migration/jihun/SimDROID/code/src")
+TEAM_SRC = Path(os.environ.get("SIMDROID_CODE_SRC", "../code/src"))
 sys.path.insert(0, str(TEAM_SRC))
 from core.dense_io import load_episode  # noqa: E402
 
-PAIRS = Path("/mnt/nvme/migration/jihun/SimDROID/data/episodes_dense/pairs")
+PAIRS = Path(os.environ.get("SIMDROID_PAIRS", "../data/episodes_dense/pairs"))
 CELLS = [("slide", "mu"), ("roll", "roll_fric"), ("bounce", "damping"), ("collide", "mass2"), ("incline", "mu")]
 
 

@@ -3,8 +3,8 @@
 # usage: run_dila.sh <root>   (root must hold manifest.jsonl and inputs/ from make_vjepa_inputs.py)
 set -u
 ROOT=$1
-cd /mnt/nvme/migration/jihun/SimDROID/code_vwm
-PY=/mnt/nvme/migration/jihun/envs/vera/bin/python
+cd "$(dirname "$0")"
+PY=${VERA_PY:-python}   # python of the DiLA/V-JEPA torch env
 LOG=$ROOT/chain.log
 run() {  # run <tag> <rollout args...>
   local tag=$1; shift
