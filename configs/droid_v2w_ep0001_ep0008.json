@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ep0001_approach_ext1_to_ext1_s1",
+    "episode": 1,
+    "task": "Put the blue block in the green bowl",
+    "window": "approach",
+    "input_view": "ext1",
+    "output_view": "ext1",
+    "seed": 1,
+    "prompt": "Continue seamlessly from the final observed frame in the fixed first external camera. There is no cut or viewpoint reset. The robot continues the task: Put the blue block in the green bowl. Preserve the exact robot, manipulated objects, background, colors, geometry, lighting, and spatial relationships. Motion remains smooth and physically plausible."
+  },
+  {
+    "id": "ep0002_late_ext2_to_ext2_s1",
+    "episode": 2,
+    "task": "Move the bottom right tip of the duvet to the left",
+    "window": "late",
+    "input_view": "ext2",
+    "output_view": "ext2",
+    "seed": 1,
+    "prompt": "Continue seamlessly from the final observed frame in the fixed second external camera. There is no cut or viewpoint reset. The robot continues the task: Move the bottom right tip of the duvet to the left. Preserve the exact robot, manipulated objects, background, colors, geometry, lighting, and spatial relationships. Motion remains smooth and physically plausible."
+  },
+  {
+    "id": "ep0003_interaction_ext1_to_ext1_s3",
+    "episode": 3,
+    "task": "Pick up the longer upright white container from the table and put it in the orange plastic bag",
+    "window": "interaction",
+    "input_view": "ext1",
+    "output_view": "ext1",
+    "seed": 3,
+    "prompt": "Continue seamlessly from the final observed frame in the fixed first external camera. There is no cut or viewpoint reset. The robot continues the task: Pick up the longer upright white container from the table and put it in the orange plastic bag. Preserve the exact robot, manipulated objects, background, colors, geometry, lighting, and spatial relationships. Motion remains smooth and physically plausible."
+  },
+  {
+    "id": "ep0007_interaction_wrist_to_wrist_s1",
+    "episode": 7,
+    "task": "Move the tile letter s to the left",
+    "window": "interaction",
+    "input_view": "wrist",
+    "output_view": "wrist",
+    "seed": 1,
+    "prompt": "Continue seamlessly from the final observed frame in the robot's wrist-mounted camera. There is no cut or viewpoint reset. The robot continues the task: Move the tile letter s to the left. Preserve the exact robot, manipulated objects, background, colors, geometry, lighting, and spatial relationships. Motion remains smooth and physically plausible."
+  },
+  {
+    "id": "ep0008_interaction_ext2_to_ext2_s2",
+    "episode": 8,
+    "task": "Remove the yellow toy from the green bowl and put it on the table.",
+    "window": "interaction",
+    "input_view": "ext2",
+    "output_view": "ext2",
+    "seed": 2,
+    "prompt": "Continue seamlessly from the final observed frame in the fixed second external camera. There is no cut or viewpoint reset. The robot continues the task: Remove the yellow toy from the green bowl and put it on the table.. Preserve the exact robot, manipulated objects, background, colors, geometry, lighting, and spatial relationships. Motion remains smooth and physically plausible."
+  }
+]
