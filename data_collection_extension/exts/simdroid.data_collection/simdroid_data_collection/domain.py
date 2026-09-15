@@ -3,7 +3,7 @@
 Positions are metres, orientations are unit quaternions (w, x, y, z).
 The TCP uses hand axes and a configurable fixed transform from panda_hand.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 import numpy as np
 
@@ -120,8 +120,14 @@ class Waypoint:
     position_tolerance: float = .005
     orientation_tolerance: float = math.radians(3)
     timeout: float = 30.
+    randomize_position: bool = False
+    randomization_radius: float = .02
 
     def __post_init__(self):
+        if not isinstance(self.randomize_position, (bool, np.bool_)):
+            raise ValueError("Enable Randomization must be a boolean.")
+        if not math.isfinite(self.randomization_radius) or self.randomization_radius < 0:
+            raise ValueError("Randomization radius must be finite and nonnegative (metres).")
         if self.gripper not in ("keep", "open", "close"):
             raise ValueError("Gripper action must be keep, open, or close.")
         if not all(math.isfinite(v) for v in (self.dwell, self.speed, self.position_tolerance,
@@ -132,6 +138,28 @@ class Waypoint:
         if not (0 <= self.dwell and self.timeout > self.dwell
                 and 0 < self.position_tolerance <= .1 and 0 < self.orientation_tolerance <= math.pi):
             raise ValueError("Invalid speed, tolerance, dwell, or timeout.")
+
+
+def sample_waypoints(waypoints, seed):
+    """Snapshot targets uniformly inside world-space balls, never mutate authorship.
+
+    Radius is in metres, independent of stage units. The cube root makes radius
+    uniform in *volume*, not uniform along a radius or only on the surface.
+    Call once per plan/run, not once per physics step or IK sample.
+    """
+    rng = np.random.default_rng(seed)
+    sampled = []
+    for wp in waypoints:
+        if not wp.enabled or not wp.randomize_position or wp.randomization_radius == 0:
+            sampled.append(wp)
+            continue
+        z = rng.uniform(-1., 1.)
+        theta = rng.uniform(0., 2*math.pi)
+        radial = wp.randomization_radius * np.cbrt(rng.random())
+        xy = math.sqrt(max(0., 1-z*z))
+        delta = radial * np.array((xy*math.cos(theta), xy*math.sin(theta), z))
+        sampled.append(replace(wp, pose=Pose(np.asarray(wp.pose.position)+delta, wp.pose.orientation)))
+    return tuple(sampled)
 
 
 class ArrivalGate:

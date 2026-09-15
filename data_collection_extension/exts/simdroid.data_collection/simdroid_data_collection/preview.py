@@ -1,7 +1,7 @@
 """Session-only visual markers and physics-free gripper mesh copies."""
 import uuid
 import numpy as np
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 from .stage_store import NS, pose_matrix, world_pose
 
 
@@ -55,7 +55,8 @@ class PreviewManager:
                 self.stage.RemovePrim(self.marker_paths.pop(missing))
             for i, path in enumerate(paths):
                 try:
-                    pose = world_pose(store.member(path))
+                    waypoint = store.read(path)
+                    pose = waypoint.pose
                 except (ValueError, RuntimeError):
                     old = self.marker_paths.pop(path, None)
                     if old:
@@ -81,6 +82,7 @@ class PreviewManager:
                         arrow.AddTranslateOp().Set(Gf.Vec3d(*v))
                     self.marker_paths[path] = marker_path
                 self._place(marker_path, pose)
+                self._randomization_region(marker_path, waypoint)
             if self.waypoint:
                 try:
                     prim = store.member(self.waypoint)
@@ -89,6 +91,39 @@ class PreviewManager:
                     self._place(self.root + "/Gripper", world_pose(prim).compose(self.robot.tcp.inverse()))
                 except (ValueError, RuntimeError):
                     self.hide_gripper()
+
+    def _randomization_region(self, marker_path, waypoint):
+        """Called inside the session edit context. No collision/rigid-body APIs."""
+        path = marker_path + "/RandomizationRegion"
+        sphere = UsdGeom.Sphere.Get(self.stage, path)
+        if not waypoint.randomize_position or waypoint.randomization_radius == 0:
+            if sphere:
+                self.stage.RemovePrim(path)
+            return
+        if not sphere:
+            sphere = UsdGeom.Sphere.Define(self.stage, path)
+            sphere.CreateDisplayColorAttr([Gf.Vec3f(.2, .65, 1.)])
+            sphere.CreateDisplayOpacityAttr([.15])
+            # An explicit material makes opacity available to RTX as well as
+            # renderers using the display primvars. Share it across all regions.
+            material_path = self.root + "/Looks/Randomization"
+            material = UsdShade.Material.Get(self.stage, material_path)
+            if not material:
+                material = UsdShade.Material.Define(self.stage, material_path)
+                shader = UsdShade.Shader.Define(self.stage, material_path + "/Surface")
+                shader.CreateIdAttr("UsdPreviewSurface")
+                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(.2, .65, 1.))
+                shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(.15)
+                shader.CreateInput("opacityThreshold", Sdf.ValueTypeNames.Float).Set(0.)
+                shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.)
+                shader.CreateInput("ior", Sdf.ValueTypeNames.Float).Set(1.)
+                shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+                material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+            UsdShade.MaterialBindingAPI.Apply(sphere.GetPrim()).Bind(material)
+        radius = waypoint.randomization_radius / UsdGeom.GetStageMetersPerUnit(self.stage)
+        if sphere.GetRadiusAttr().Get() != radius:
+            sphere.CreateRadiusAttr(radius)
+            sphere.CreateExtentAttr([Gf.Vec3f(-radius), Gf.Vec3f(radius)])
 
     def _place(self, path, pose):
         xf = UsdGeom.Xformable(self.stage.GetPrimAtPath(path))

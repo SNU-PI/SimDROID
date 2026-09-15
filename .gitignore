@@ -4,6 +4,8 @@ data/
 runs/
 notes/
 external/
+textures/
+*.usda
 
 # Caches / venvs / builds
 .venv/

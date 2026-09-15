@@ -97,6 +97,47 @@ no automatic legacy FSM conversion. Create new targets with this editor.
 Each sequence binds one Panda; multiple sequences/robots can be authored, with
 one active run at a time.
 
+## Position randomization (v0.2.0)
+
+Select a waypoint, then check **Enable Randomization** in its inspector. A
+translucent blue sphere appears centered on the original waypoint's TCP position.
+Set **Radius m** and press Enter or leave the field to save the radius. These two
+controls save immediately to the waypoint authoring layer with undo/redo; they
+do not apply or discard unfinished edits in the other pose/settings fields.
+Use **Apply Pose and Settings** for those other fields as before.
+
+- Default: off, with a stored radius of **0.02 m** (2 cm). Existing waypoint
+  files without these optional attributes remain deterministic.
+- Moving the original waypoint moves the sphere. The radius is in world-space
+  metres, including in scenes using another stage-unit scale. Radius must be
+  finite and nonnegative; zero uses the original pose and hides the region.
+- Before each run, enabled targets are sampled **once, uniformly inside the
+  sphere's volume**. The targets stay fixed during planning, motion, pause/resume,
+  and arrival checks. There is no frame-by-frame jitter or cumulative drift.
+- Orientation, gripper action, speed, dwell, tolerances, and the original authored
+  pose are preserved. The gripper preview still shows the **nominal** target;
+  the sphere indicates its possible positional variation, not a sampled preview.
+- **Validate → Run Sequence** reuses the successful validation's sampled targets
+  if the requested waypoints, settings, robot/TCP configuration and scene remain
+  unchanged. Trajectories are planned again from the current robot state. That
+  sample is consumed by the run; the next run draws a fresh sample. A different
+  run scope, waypoint edit, Abort, or timeline Stop requires a new sample.
+- **Save Waypoints** saves the enable flag and radius, not a randomized replacement
+  pose. Duplicates inherit these settings. The visual spheres and their material
+  are session-only, have no collision/rigid-body physics, and hide during execution.
+- **Export Run JSON** includes the random seed and nominal waypoints under
+  `metadata.randomization`; `metadata.waypoints` and per-frame `goal_tcp` contain
+  the actual sampled targets. Planning logs include sampled positions and seed,
+  including for samples that fail IK. Cancelling validation preserves prior data.
+
+This is a **sampling region, not a safety guarantee or a larger arrival tolerance**.
+Existing IK/path and timing checks still apply; an invalid sample stops planning
+instead of silently resampling. Reduce the radius or try a new run after reviewing
+the error. There is still no collision avoidance or grasp-success checking.
+Keep precise grasp points fixed unless the object/grasp relationship permits
+the offset. Curved paths, orientation randomization and object-relative/grouped
+offsets are not part of this change. Robot physics and Lula limits are unchanged.
+
 ## Saving and telemetry
 
 - **Save Waypoints** writes a small separate USD layer and links it into the
@@ -211,11 +252,30 @@ Unit tests (Python + NumPy):
 python -B -m unittest discover -s data_collection_extension/tests -p 'test_*.py' -v
 ```
 
+CPU-only USD schema/geometry tests can also run with the installed USD libraries,
+without starting Kit, rendering, physics simulation or CUDA. For this machine:
+
+```bash
+LD_LIBRARY_PATH=/home/sangjunpark/miniconda3/envs/env_isaaclab/lib:/home/sangjunpark/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/isaacsim/extscache/omni.usd.libs-1.0.1+69cbf6ad.lx64.r.cp311/bin \
+PYTHONPATH=/home/sangjunpark/miniconda3/envs/env_isaaclab/lib/python3.11/site-packages/isaacsim/extscache/omni.usd.libs-1.0.1+69cbf6ad.lx64.r.cp311 \
+/home/sangjunpark/miniconda3/envs/env_isaaclab/bin/python -B \
+  data_collection_extension/tests/usd_randomization_cpu.py -v
+```
+
+These use native USD and the real extension authoring/preview code, but a stub
+for Kit's command dispatcher. The UI/orchestration unit tests similarly stub Kit
+services; they do **not** verify actual mouse input, RTX opacity or robot motion.
+The v0.2 update subsequently passed native GPU tests on physical GPU 7 with
+stock Z-up and translated/rotated Y-up Pandas. These covered real UI input,
+rendered sphere transparency, randomized Lula motion and unchanged nominal
+waypoints. The remote streaming client and randomization in the full `data_gen`
+scene were not tested in this update; see `AUDIT.md` for scope and known limits.
+
 Headless integration test, using the installed Isaac Sim Python:
 
 ```bash
 /home/sangjunpark/miniconda3/envs/env_isaaclab/bin/python -B \
-  data_collection_extension/tests/kit_smoke.py --gpu 7 --audit \
+  data_collection_extension/tests/kit_smoke.py --gpu 7 --audit --ui-test \
   --robot-usd https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd
 ```
 
@@ -224,11 +284,16 @@ renderer GPU 7, disables multi-GPU rendering and uses CUDA's remapped device 0
 for physics. It directs test outputs/caches into `.runtime/`. Omitting
 `--robot-usd` runs the authoring/lifecycle checks without loading the robot.
 `--audit` adds malformed-goal, undo/calibration, native transform routing, actual
-extension control callbacks, and unload-during-planning regression checks.
+extension control callbacks, and unload-during-planning regression checks. With
+`--robot-usd`, it also checks randomized Validate-to-Run target reuse, measured
+arrival, close/open actions, seed/goal telemetry, unchanged nominal authoring,
+fresh subsequent samples and deterministic targets when randomization is off.
 `--ui-test` adds native mouse interaction checks: popup selection, holding a
 button across refresh intervals, adding a goal, and persistent visible feedback.
 It also verifies that redundant dropdown notifications do not discard the
-binding or erase unsaved field values. `--scene /absolute/path/to/data_gen.usda`
+binding or erase unsaved field values, plus randomization toggle/radius/undo,
+Enter/focus-loss commits, invalid radius recovery and an RTX sphere capture at
+`.runtime/randomization_region.png`. `--scene /absolute/path/to/data_gen.usda`
 adds a real-scene UI and short-motion check using normal timeline Play without
 a test World; it does not save the scene or its sublayers.
 Nothing in the extension imports, modifies, or executes the old `droid_sim` code.
@@ -247,9 +312,12 @@ currently reproduces the known arrival failure above.
 
 Verification on the installed Isaac Sim 5.1.0 environment:
 
-- 24 unit tests: TCP/quaternion math, arrival/dwell, one-shot actions,
+- 42 unit tests: TCP/quaternion math, arrival/dwell, one-shot actions,
   pause/resume, cancelled planning, base motion, invalid timesteps, preserved
-  recordings, abort, timeout, deleted prims and invalid handles.
+  recordings, abort, timeout, deleted prims, invalid handles, uniform-volume
+  sampling, reproducible seeds, sample reuse and settings-only UI callbacks.
+- 4 standalone native USD tests: randomization persistence/backward compatibility,
+  undo, layer conflicts, exact transform preservation and preview geometry/materials.
 - Headless Kit checks: enable/window creation, tagged membership, ordering,
   undo/redo before and after save/deselection, TCP and robot binding undo,
   layer reload, malformed/deleted goals, preview exclusion and shutdown.
@@ -258,7 +326,9 @@ Verification on the installed Isaac Sim 5.1.0 environment:
   JSON export, real extension validate/cancel/run/pause/resume, and unload during
   async planning without invalidating the still-running robot's physics handles.
 - Both Z-up and translated/rotated Y-up robot cases passed. Add `--up-axis Y`
-  to the test command for the latter. GPU tests are restricted to physical GPU 7.
+  to the test command for the latter. Randomized sequences passed in both cases,
+  with unchanged robot drive gains/gravity and nominal waypoint authoring.
+  GPU tests are restricted to physical GPU 7.
 
 Native dropdown and button input is covered by `--ui-test`. An actual remote
 WebRTC client connection and complete dataset-collection tasks are not automated

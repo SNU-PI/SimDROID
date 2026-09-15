@@ -1,5 +1,5 @@
 [package]
-version = "0.1.1"
+version = "0.2.0"
 title = "Franka Waypoint Editor"
 description = "Author TCP waypoints, preview a gripper, and execute Franka sequences with Lula."
 category = "Robotics"

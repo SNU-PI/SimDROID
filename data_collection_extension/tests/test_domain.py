@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
+from dataclasses import replace
 import numpy as np
 
 SOURCE = Path(__file__).resolve().parents[1] / "exts/simdroid.data_collection/simdroid_data_collection/domain.py"
@@ -13,6 +14,58 @@ spec.loader.exec_module(d)
 
 
 class DomainTests(unittest.TestCase):
+    def test_randomization_defaults_and_zero_radius(self):
+        wp = d.Waypoint("/goal", d.Pose((1, 2, 3), (1, 0, 0, 0)))
+        self.assertFalse(wp.randomize_position)
+        self.assertEqual(wp.randomization_radius, .02)
+        self.assertIs(d.sample_waypoints((wp,), 1)[0], wp)
+        zero = replace(wp, randomize_position=True, randomization_radius=0.)
+        self.assertIs(d.sample_waypoints((zero,), 2)[0], zero)
+        disabled = replace(wp, enabled=False, randomize_position=True)
+        self.assertIs(d.sample_waypoints((disabled,), 3)[0], disabled)
+
+    def test_randomization_radius_validation(self):
+        pose = d.Pose((0, 0, 0), (1, 0, 0, 0))
+        for radius in (-.01, np.nan, np.inf, -np.inf):
+            with self.subTest(radius=radius), self.assertRaisesRegex(ValueError, "radius"):
+                d.Waypoint("/goal", pose, randomization_radius=radius)
+        with self.assertRaisesRegex(ValueError, "boolean"):
+            d.Waypoint("/goal", pose, randomize_position="false")
+
+    def test_randomization_seed_and_immutable_nominal(self):
+        wp = d.Waypoint("/goal", d.Pose((.3, .7, -.2), d.euler_quat((20, 40, 60))),
+                        gripper="close", dwell=1., randomize_position=True, randomization_radius=.03)
+        before = dict(vars(wp))
+        a = d.sample_waypoints((wp,), 123)
+        self.assertEqual(a, d.sample_waypoints((wp,), 123))
+        self.assertNotEqual(a, d.sample_waypoints((wp,), 124))
+        self.assertEqual(vars(wp), before)
+        self.assertGreater(a[0].pose.error(wp.pose)[0], 0.)
+        self.assertLessEqual(a[0].pose.error(wp.pose)[0], wp.randomization_radius)
+        self.assertLess(a[0].pose.error(wp.pose)[1], 1e-7)
+        for key in vars(wp):
+            if key != "pose":
+                self.assertEqual(getattr(a[0], key), getattr(wp, key))
+
+    def test_randomization_is_uniform_in_volume(self):
+        wp = d.Waypoint("/goal", d.Pose((2, -3, 4), (1, 0, 0, 0)),
+                        randomize_position=True, randomization_radius=.025)
+        samples = d.sample_waypoints((wp,)*6000, 42)
+        offsets = (np.array([w.pose.position for w in samples])-wp.pose.position) / wp.randomization_radius
+        radii = np.linalg.norm(offsets, axis=1)
+        self.assertTrue(np.all(radii <= 1.+1e-12))
+        self.assertAlmostEqual(float(np.mean(radii**3)), .5, delta=.02)
+        np.testing.assert_allclose(np.mean(offsets, axis=0), 0., atol=.025)
+        np.testing.assert_allclose(np.mean(offsets**2, axis=0), .2, atol=.015)
+
+    def test_randomization_does_not_enlarge_arrival_tolerance(self):
+        nominal = d.Waypoint("/goal", d.Pose((0, 0, 0), (1, 0, 0, 0)),
+                             gripper="close", randomize_position=True, randomization_radius=.1)
+        sampled, = d.sample_waypoints((nominal,), 42)
+        gate = d.ArrivalGate(sampled)
+        self.assertIsNone(gate.step(.2, nominal.pose.error(sampled.pose), True, True))
+        self.assertEqual(gate.step(.2, (0, 0), True, True), "close")
+
     def test_tcp_inverse(self):
         goal = d.Pose((.2, -.7, .3), d.euler_quat((20, 80, -60)))
         offset = d.Pose((0, 0, .107), d.euler_quat((0, 0, 45)))

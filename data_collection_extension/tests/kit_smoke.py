@@ -201,6 +201,8 @@ async def check():
             owner.choose_robot("/World/Franka")
             owner.bind()
             await controller_audit(owner)
+            from randomization_motion_cases import randomization_motion_audit
+            await randomization_motion_audit(owner, runtime)
             owner.launch("validate")
             pending = owner.task
             router = owner.edit_router

@@ -1,5 +1,6 @@
 """Kit lifecycle, selection synchronization, and orchestration of the editor."""
 import asyncio
+import secrets
 from pathlib import Path
 import time
 import weakref
@@ -12,7 +13,7 @@ import omni.timeline
 import omni.usd
 from omni.kit.menu.utils import MenuItemDescription, add_menu_items, remove_menu_items
 from pxr import Tf, Usd, UsdGeom
-from .domain import Pose
+from .domain import Pose, sample_waypoints
 from .stage_store import StageStore, FrankaWaypointLayerEdit, find_robots
 from .preview import PreviewManager
 from .robot import FrankaBinding
@@ -35,6 +36,7 @@ class Extension(omni.ext.IExt):
         self.last_update = 0.
         self.last_state = "idle"
         self.observed_config = None
+        self.validated_randomization = None
         self.layer_file = str(Path(__file__).resolve().parents[4] / "franka_paths.usda")
         self.log_file = str(Path(__file__).resolve().parents[4] / "franka_run.json")
         omni.kit.commands.register(FrankaWaypointLayerEdit)
@@ -111,6 +113,7 @@ class Extension(omni.ext.IExt):
             self.selected = ""
 
     def detach_stage(self):
+        self.validated_randomization = None
         self.edit_router.flush()
         self.cancel_task()
         self.runner.abort("Stage detached", hold=False)
@@ -146,6 +149,7 @@ class Extension(omni.ext.IExt):
             if any(str(p).startswith(collection) or collection.startswith(str(p).rstrip("/")+"/")
                    for p in paths):
                 self.dirty = True
+                self.validated_randomization = None
 
     def on_stage(self, event):
         if event.type == int(omni.usd.StageEventType.SELECTION_CHANGED):
@@ -157,6 +161,7 @@ class Extension(omni.ext.IExt):
 
     def on_timeline(self, event):
         if event.type == int(omni.timeline.TimelineEventType.STOP):
+            self.validated_randomization = None
             self.cancel_task()
             self.runner.abort("Timeline stopped; bind again before running.", hold=False)
             self.runner.robot = self.robot = None
@@ -364,17 +369,40 @@ class Extension(omni.ext.IExt):
             raise ValueError("Select a waypoint first.")
         robot = self.ensure_robot(physics=True)
         snapshot = self.store.snapshot(self.selected if mode == "selected" else None)
+        key = (id(self.store), self.configuration(), snapshot)
+        cached = self.validated_randomization
+        if cached and cached[0] == key:
+            _, targets, randomization = cached
+        else:
+            count = sum(w.randomize_position and w.randomization_radius > 0 for w in snapshot)
+            seed = secrets.randbits(32) if count else None
+            targets = sample_waypoints(snapshot, seed)
+            randomization = {
+                "seed": seed, "distribution": "uniform_ball_volume", "frame": "world",
+                "units": "metres", "randomized_waypoints": count,
+                "nominal_waypoints": [dict(vars(w), pose=vars(w.pose)) for w in snapshot],
+            }
+        # Consume validated targets once. A cancelled/failed plan cannot leave
+        # an earlier successful validation cached as if it checked this run.
+        self.validated_randomization = None
         self.runner.prepare(robot)
         self.preview.set_hidden(True)
-        self.task = asyncio.ensure_future(self._plan_and_start(weakref.ref(self), robot, snapshot, mode))
+        self.task = asyncio.ensure_future(self._plan_and_start(
+            weakref.ref(self), robot, targets, mode, key, randomization))
 
     @staticmethod
-    async def _plan_and_start(owner_ref, robot, snapshot, mode):
+    async def _plan_and_start(owner_ref, robot, snapshot, mode, key, randomization):
         def progress(message):
             owner = owner_ref()
             if owner is not None and getattr(owner, "task", None) is asyncio.current_task():
                 owner.set_status(message)
         try:
+            if randomization["randomized_waypoints"]:
+                # Log before IK so failed random samples can also be diagnosed,
+                # without replacing the previous successful run's telemetry.
+                for wp in snapshot:
+                    carb.log_info(f"[Franka Waypoint Editor] Sampled target {wp.path}: {wp.pose.position}; "
+                                  f"seed={randomization['seed']}")
             segments = await robot.plan(snapshot, progress)
             self = owner_ref()
             if self is None:
@@ -388,12 +416,19 @@ class Extension(omni.ext.IExt):
                 carb.log_info(f"[Franka Waypoint Editor] Planned {segment.waypoint.path}: "
                               f"{segment.duration:.3f}s simulation motion, Speed={segment.waypoint.speed:g} "
                               "of native Panda limits.")
+            randomized = randomization["randomized_waypoints"]
+            detail = (f" {randomized} randomized target(s), seed {randomization['seed']}."
+                      if randomized else "")
             if mode == "validate":
+                self.validated_randomization = (key, snapshot, randomization)
                 self.runner.abort(f"Validated {len(segments)} waypoints: "
                                   f"{sum(s.duration for s in segments):.1f}s simulation motion "
-                                  "plus waits/settling. No collision checks.")
+                                  f"plus waits/settling.{detail} Run reuses these targets if unchanged. "
+                                  "No collision checks.")
             else:
                 self.runner.start(segments)
+                self.runner.metadata["randomization"] = randomization
+                self.set_status(f"Running {len(segments)} waypoints.{detail} No collision checks.")
         except asyncio.CancelledError:
             pass
         except Exception as exc:
@@ -417,6 +452,7 @@ class Extension(omni.ext.IExt):
         self.task = None
 
     def abort(self):
+        self.validated_randomization = None
         self.cancel_task()
         self.runner.abort()
         self.dirty = True

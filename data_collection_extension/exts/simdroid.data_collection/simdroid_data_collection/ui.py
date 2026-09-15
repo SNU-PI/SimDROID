@@ -15,6 +15,7 @@ class EditorUI:
         self.sections = {}
         self.section_states = {}
         self.scroll = None
+        self._saving_randomization = False
         # Feedback is outside the scrolling/rebuilt form, so every action is
         # visible even when the Execution section is collapsed or off screen.
         with self.window.frame:
@@ -98,6 +99,29 @@ class EditorUI:
                 ui.FloatField(model=model, width=ui.Fraction(1))
                 models.append(model)
         return models
+
+    def commit_randomization(self, path, enabled, radius):
+        # Focus can change during selection/rebuild. Do not apply old widgets
+        # to another waypoint or erase typed-but-unapplied pose/settings edits.
+        if (not self.owner or self._saving_randomization or self.owner.selected != path
+                or self.randomize is not enabled or self.random_radius is not radius):
+            return
+        self._saving_randomization = True
+        try:
+            def save():
+                self.owner.require_idle()
+                self.owner.store.update_randomization(path, enabled.as_bool, radius.as_float)
+                self.random_radius_field.enabled = enabled.as_bool
+                self._signature = self.snapshot()
+                self.owner.set_status("Randomization enabled: sample once per run inside the sphere."
+                                      if enabled.as_bool else "Randomization disabled: use the authored pose.")
+            if not self.owner.guard(save, label="Waypoint randomization"):
+                wp = self.owner.store.read(path)
+                enabled.set_value(wp.randomize_position)
+                radius.set_value(wp.randomization_radius)
+                self.random_radius_field.enabled = wp.randomize_position and not self.owner.runner.active
+        finally:
+            self._saving_randomization = False
 
     def build(self):
         if not self.window:
@@ -212,6 +236,20 @@ class EditorUI:
                                     ui.Label("On arrival", width=85)
                                     self.gripper = ui.ComboBox(("keep", "open", "close").index(wp.gripper),
                                                               "Keep", "Open", "Close")
+                                with ui.HStack(height=24, spacing=4):
+                                    enabled = self.randomize = ui.SimpleBoolModel(wp.randomize_position)
+                                    radius = self.random_radius = ui.SimpleFloatModel(wp.randomization_radius)
+                                    ui.CheckBox(model=enabled, width=24, enabled=not busy,
+                                                identifier="randomize_position")
+                                    ui.Label("Enable Randomization", width=160)
+                                    ui.Label("Radius m", width=60)
+                                    self.random_radius_field = ui.FloatField(
+                                        model=radius, enabled=wp.randomize_position and not busy,
+                                        identifier="randomization_radius",
+                                        tooltip="Metres. Press Enter or leave the field to save. Zero keeps the original position.")
+                                    commit = partial(self.commit_randomization, wp.path, enabled, radius)
+                                    enabled.add_value_changed_fn(lambda model, fn=commit: fn())
+                                    radius.add_end_edit_fn(lambda model, fn=commit: fn())
                                 self.dwell, self.speed = self.fields(("Wait s", "Speed"), (wp.dwell, wp.speed))
                                 ui.Label("Speed: 0 < value <= 1; 1 = native Panda model limits (not m/s).",
                                          word_wrap=True, height=32)
@@ -264,7 +302,8 @@ class EditorUI:
             Pose([m.as_float for m in self.pos], euler_quat([m.as_float for m in self.rot])),
             self.enabled.as_bool, ("keep", "open", "close")[self.gripper.model.get_item_value_model().as_int],
             self.dwell.as_float, self.speed.as_float, self.ptol.as_float,
-            np.radians(self.rtol.as_float), self.timeout.as_float)
+            np.radians(self.rtol.as_float), self.timeout.as_float,
+            self.randomize.as_bool, self.random_radius.as_float)
         self.owner.store.update(wp)
         self.owner.hide_preview()
         self.owner.dirty = True

@@ -120,8 +120,62 @@ async def interaction_audit(context, manager, runtime):
     assert "ERROR" in owner.ui.status_label.text and "Visible test failure" in owner.ui.status_label.text
     assert "ScrollingFrame" not in ui_test.find(prefix+"Label[*].identifier=='status'").realpath
     print("PASS UI: persistent top-level feedback, visible errors and unsaved field preservation", flush=True)
+    # Real checkbox input, radius focus commit,
+    # and an open pose draft must coexist without rebuilding the selected form.
+    import omni.kit.undo
+    checkbox = ui_test.find(prefix+"CheckBox[*].identifier=='randomize_position'")
+    path = owner.selected
+    await checkbox.click()
+    await settle()
+    assert owner.store.read(path).randomize_position
+    assert owner.ui.pos[0] is field and abs(field.as_float-.0345) < 1e-6
+    region = owner.preview.marker_paths[path] + "/RandomizationRegion"
+    assert stage.GetPrimAtPath(region)
+    # Native begin_edit/end_edit virtual methods do not dispatch user edit
+    # notifications when called directly. Exercise the real field and Enter.
+    radius_field = ui_test.find(prefix+"FloatField[*].identifier=='randomization_radius'")
+    await radius_field.input("0.05", clear_before_input=True)
+    await settle()
+    assert abs(owner.store.read(path).randomization_radius-.05) < 1e-6
+    assert abs(UsdGeom.Sphere.Get(stage, region).GetRadiusAttr().Get()-.05) < 1e-6
+    assert owner.ui.pos[0] is field, "Randomization edit erased a pending pose draft"
+    # Leaving the field commits too; invalid radii restore the last saved value.
+    await radius_field.input("0.04", end_key=KeyboardInput.TAB, clear_before_input=True)
+    await settle()
+    assert abs(owner.store.read(path).randomization_radius-.04) < 1e-6
+    await radius_field.input("-0.01", clear_before_input=True)
+    await settle()
+    assert "ERROR" in owner.ui.status_label.text
+    assert abs(owner.store.read(path).randomization_radius-.04) < 1e-6
+    assert abs(owner.ui.random_radius.as_float-.04) < 1e-6
+    assert owner.ui.pos[0] is field
+    await radius_field.input("0.05", clear_before_input=True)
+    await settle()
+    assert abs(UsdGeom.Sphere.Get(stage, region).GetRadiusAttr().Get()-.05) < 1e-6
+    checkbox = ui_test.find(prefix+"CheckBox[*].identifier=='randomize_position'")
+    await checkbox.click()
+    await settle()
+    assert not stage.GetPrimAtPath(region)
+    omni.kit.undo.undo()
+    await settle()
+    assert owner.store.read(path).randomize_position and stage.GetPrimAtPath(region)
+    print("PASS UI: randomization toggle, Enter/blur radius commit, invalid radius, undo and preserved pose drafts", flush=True)
     context.get_selection().clear_selected_prim_paths()
     await frames(12)
+    # Capture the actual RTX result, not a mockup. The opaque marker inside the
+    # translucent region provides a visual check of the material's transparency.
+    import numpy as np
+    from pxr import UsdLux
+    from isaacsim.core.utils.viewports import set_camera_view
+    from omni.kit.viewport.utility import get_active_viewport, capture_viewport_to_file
+    light = UsdLux.DomeLight.Define(stage, "/World/RandomizationTestLight")
+    light.CreateIntensityAttr(1000.)
+    center = np.asarray(owner.store.read(path).pose.position)
+    set_camera_view(eye=center+np.array((.20, .14, .22)), target=center)
+    await settle(1.)
+    capture = capture_viewport_to_file(get_active_viewport(), str(runtime / "randomization_region.png"))
+    await capture.wait_for_result()
+    print("PASS UI: RTX randomization region capture saved", flush=True)
 
 
 async def scene_smoke(context, manager, runtime, filename):

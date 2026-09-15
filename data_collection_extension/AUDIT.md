@@ -202,3 +202,77 @@ GPU 7, and a repeat using the previous UI-test setup completed the diagnostics
 and broader suite. No driver reset, multi-GPU use, source-scene mutation, or
 renderer workaround was performed. Existing metrics-assembler and Coca-Cola
 collision warnings also remain. WebRTC client performance was not measured.
+
+## Follow-up: waypoint position randomization — 2026-09-16 (v0.2.0)
+
+Implemented per-waypoint `randomize_position` and `randomization_radius` optional
+attributes, defaulting to off/0.02 m for old and new waypoint files. Checkbox and
+radius edits are undoable settings-only writes, preserving the exact authored
+transform and other unfinished UI fields. Translucent region spheres/materials
+live only in the existing preview session subtree and have no physics APIs.
+
+The launch path draws one uniform-volume sample per enabled target. Successful
+validation can supply the same samples to the following unchanged run; samples
+are consumed on run, never updated in physics callbacks, and never written over
+nominal waypoint poses. Existing Lula IK/trajectory and measured-arrival gates
+operate on the sampled snapshots. Run telemetry records seed, nominal settings
+and sampled goals without corrupting prior recordings on cancelled validation.
+
+Initial verification, before GPU testing was authorized:
+
+- 42 CPU unit tests passed, including uniform-volume distribution, bounds,
+  seed reproducibility, immutable authorship/settings, original arrival tolerance,
+  Validate-to-Run reuse, fresh subsequent runs, changed scope/settings, failed or
+  cancelled planning, and immediate UI callback validation with fake Kit services.
+- 4 native USD-only tests passed: old-file defaults, save/load, duplicate, the
+  real layer undo command (stub dispatcher), stronger-layer conflict rollback,
+  exact transform preservation, Y/Z-up and metre/centimetre scene conventions,
+  sphere/material opacity attributes, transformed parents, radius updates,
+  selection mapping, visibility, physics exclusion and cleanup.
+- Added native mouse/radius/undo regressions to `--ui-test` for the next GPU run.
+  **These were not executed.** Native RTX transparency, live widget behavior,
+  physics-view stability, and randomized Franka motion remain unverified.
+- **No GPU tests or Isaac Sim application were started.** GPU usage was inspected
+  read-only. The user requested that testing not compete with the existing GPU 7
+  workload. Tests used only CPU Python and standalone USD libraries.
+
+This does not fix the earlier gravity-related arrival offset, add collision
+checking, guarantee grasp success, or generate curved paths. No drive gains,
+gravity flags, source scenes, user waypoint files, or prior checkpoint commits
+were changed by this feature. The root `.gitignore` edit belongs to the user and
+was left untouched.
+
+### Authorized GPU follow-up — 2026-09-16
+
+After the user confirmed that GPU testing could proceed, GPU 7 was checked free
+and the native suite was run with `CUDA_VISIBLE_DEVICES=7`, physical renderer
+GPU 7, remapped physics device 0, and multi-GPU rendering disabled. Process UUID
+checks confirmed CUDA allocations only on GPU 7. No GPU resets, process-kill
+commands, or changes to other workloads were performed.
+
+- The first attempt failed a test-driver assertion: calling native model
+  `begin_edit()`/`end_edit()` directly did not dispatch a user's field-edit
+  notification. The test now types into the actual FloatField and presses Enter;
+  no production callback change was necessary.
+- Both full `--audit --ui-test --robot-usd <stock Panda URL>` runs exited 0:
+  translated/rotated Y-up, then stock Z-up. Logs are in ignored
+  `.runtime/randomization_gpu7_y.log` and `.runtime/randomization_gpu7_z.log`.
+- Native UI tests passed checkbox enable/disable, radius resizing, undo and
+  preservation of unfinished pose edits. The final Z-up invocation also verified
+  Enter and focus-loss commits plus rejection/restoration of a negative radius.
+- Captured and visually inspected `.runtime/randomization_region.png`: the
+  region is translucent and the central waypoint marker remains visible inside.
+- Real Lula/PhysX randomized two-goal runs completed in both robot conventions:
+  Validate-to-Run reused seed 12345, measured TCP arrival passed, close/open actions
+  fired, telemetry contained sampled goals, and the nominal authoring layer was
+  byte-for-byte unchanged. A later validation drew a new sample; disabling
+  randomization restored the nominal targets. Physics views stayed valid.
+- Existing authoring, save/load, malformed-goal, pause/resume, cancellation and
+  unload-during-planning regressions also passed. Re-ran all 42 CPU unit tests and
+  4 standalone native USD tests successfully.
+- The test applications shut down normally; GPU 7 returned to 0 MiB afterward.
+
+This was native headless Kit UI/RTX testing, not an end-to-end remote streaming
+client test. Randomization in the full `data_gen` scene was not exercised here;
+the previously documented gravity-related arrival limit remains. No production
+physics settings or source scene/waypoint files were changed during these runs.

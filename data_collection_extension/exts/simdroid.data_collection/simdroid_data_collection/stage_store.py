@@ -1,5 +1,6 @@
 """USD-backed authoring. Only explicit sequence membership makes a goal runnable."""
 from pathlib import Path
+from dataclasses import replace
 import uuid
 import numpy as np
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics
@@ -235,7 +236,9 @@ class StageStore:
     def _settings(self, prim, wp):
         author(prim, "enabled", Sdf.ValueTypeNames.Bool, wp.enabled)
         author(prim, "gripper", Sdf.ValueTypeNames.Token, wp.gripper)
-        for name in ("dwell", "speed", "position_tolerance", "orientation_tolerance", "timeout"):
+        author(prim, "randomize_position", Sdf.ValueTypeNames.Bool, wp.randomize_position)
+        for name in ("dwell", "speed", "position_tolerance", "orientation_tolerance", "timeout",
+                     "randomization_radius"):
             author(prim, name, Sdf.ValueTypeNames.Double, getattr(wp, name))
 
     def read(self, path):
@@ -244,7 +247,7 @@ class StageStore:
             key: attr(prim, key, default) for key, default in {
                 "enabled": True, "gripper": "keep", "dwell": .5, "speed": .3,
                 "position_tolerance": .005, "orientation_tolerance": np.radians(3),
-                "timeout": 30.,
+                "timeout": 30., "randomize_position": False, "randomization_radius": .02,
             }.items()})
 
     def member(self, path):
@@ -266,8 +269,26 @@ class StageStore:
             distance, angle = result.pose.error(wp.pose)
             if distance > 1e-8 or angle > 1e-6 or any(
                     getattr(result, key) != getattr(wp, key) for key in
-                    ("enabled", "gripper", "dwell", "speed", "position_tolerance", "orientation_tolerance", "timeout")):
+                    ("enabled", "gripper", "dwell", "speed", "position_tolerance", "orientation_tolerance",
+                     "timeout", "randomize_position", "randomization_radius")):
                 raise ValueError("A stronger USD layer overrides this waypoint; remove its conflicting opinions first.")
+        self.edit(change)
+
+    def update_randomization(self, path, enabled, radius):
+        # Settings-only edits must not re-author the pose, including its exact
+        # transform representation, reset stack, or typed-but-unapplied UI pose.
+        current = self.read(path)
+        updated = replace(current, randomize_position=enabled, randomization_radius=radius)
+        if updated == current:
+            return
+        def change():
+            prim = self.member(path)
+            author(prim, "randomize_position", Sdf.ValueTypeNames.Bool, updated.randomize_position)
+            author(prim, "randomization_radius", Sdf.ValueTypeNames.Double, updated.randomization_radius)
+            actual = self.read(path)
+            if (actual.randomize_position != updated.randomize_position
+                    or actual.randomization_radius != updated.randomization_radius):
+                raise ValueError("A stronger USD layer overrides randomization; remove its conflicting opinions first.")
         self.edit(change)
 
     def reorder(self, path, direction):
