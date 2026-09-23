@@ -58,6 +58,8 @@ scripts/
 ├── glb_to_usd.py     glTF → USD conversion (NVIDIA omni.kit.asset_converter)
 └── build_alchera_real.py   assemble a scene.usda placed in the robot frame
 docker/               docker-compose.yml + web-viewer (WebRTC)
+tools/
+└── sam3d_asset_catalog/   browse generated SAM 3D assets and metadata
 docs/
 ├── interactive_gui.md        browser GUI, live control, the teal-material gotcha
 └── polaris_reproduction.md   earlier PolaRiS real-to-sim eval reproduction

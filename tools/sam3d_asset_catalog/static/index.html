@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>DROID SAM 3D Asset Catalog v3</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/static/vendor/three.module.js",
+          "three/addons/": "/static/vendor/addons/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">3D</span>
+        <div>
+          <h1>DROID Asset Catalog v3</h1>
+          <p>SAM 3D Objects · Scene → Setup → Asset</p>
+        </div>
+      </div>
+      <div class="summary" id="summary" aria-label="Catalog summary"></div>
+    </header>
+
+    <main class="app-shell">
+      <aside class="scene-panel panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">SCENES</span>
+            <strong id="scene-result-count">Loading</strong>
+          </div>
+        </div>
+        <label class="search-field">
+          <span class="sr-only">Scene search</span>
+          <input id="scene-search" type="search" placeholder="Search ID, place, or object" autocomplete="off" />
+          <kbd>/</kbd>
+        </label>
+        <div class="scene-list" id="scene-list" aria-live="polite"></div>
+      </aside>
+
+      <section class="setup-panel panel">
+        <div class="empty-state" id="scene-empty">Select a scene.</div>
+        <div id="scene-content" hidden>
+          <div class="scene-header">
+            <span class="eyebrow" id="scene-id"></span>
+            <h2 id="scene-title"></h2>
+            <div class="metric-row" id="scene-metrics"></div>
+          </div>
+          <div class="media-frame">
+            <div class="segmented" id="media-mode" role="group" aria-label="Source media mode">
+              <button type="button" data-mode="video" class="active">Video</button>
+              <button type="button" data-mode="source">Frame</button>
+              <button type="button" data-mode="detections">Detections</button>
+            </div>
+            <img id="setup-image" alt="Selected setup representative" />
+            <video id="setup-video" controls playsinline preload="metadata"></video>
+            <div class="video-status" id="video-status" hidden></div>
+          </div>
+          <div class="trajectory-meta" id="trajectory-meta" hidden>
+            <div class="trajectory-meta-line">
+              <strong id="trajectory-state"></strong>
+              <span id="trajectory-duration"></span>
+              <span id="trajectory-camera"></span>
+            </div>
+            <p id="trajectory-task"></p>
+          </div>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">SETUPS</span>
+              <strong id="setup-count"></strong>
+            </div>
+          </div>
+          <div class="setup-list" id="setup-list"></div>
+        </div>
+      </section>
+
+      <section class="asset-panel panel">
+        <div class="empty-state" id="asset-empty">Select a setup to inspect its 3D assets.</div>
+        <div id="asset-content" hidden>
+          <div class="asset-header">
+            <div>
+              <span class="eyebrow" id="setup-id"></span>
+              <h2 id="setup-title"></h2>
+            </div>
+            <a class="source-link" id="result-json-link" href="#" target="_blank" rel="noreferrer">JSON</a>
+          </div>
+          <div class="viewer-shell">
+            <canvas id="viewer"></canvas>
+            <div class="viewer-status" id="viewer-status">Select an asset</div>
+            <div class="viewer-toolbar">
+              <button type="button" id="reset-camera">Reset view</button>
+              <button type="button" id="toggle-spin" aria-pressed="true">Spin on</button>
+            </div>
+            <div class="asset-caption" id="asset-caption" hidden>
+              <div>
+                <strong id="asset-name"></strong>
+                <span id="asset-scores"></span>
+              </div>
+              <div class="download-links">
+                <a id="download-glb" href="#" download>GLB</a>
+                <a id="download-ply" href="#" download>PLY</a>
+              </div>
+            </div>
+          </div>
+          <div class="section-heading asset-list-heading">
+            <div>
+              <span class="eyebrow">GENERATED ASSETS</span>
+              <strong id="asset-count"></strong>
+            </div>
+          </div>
+          <div class="asset-list" id="asset-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>
