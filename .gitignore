@@ -17,3 +17,9 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+# Versioned static review payload (the generic data/ rule above should not hide it)
+!droid_scene_review/data/
+!droid_scene_review/data/**
+
+droid_scene_review/assets/episode_screenshots/*.jpg

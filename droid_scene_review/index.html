@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DROID 전체 Scene / Setup 분류 결과</title>
+  <link rel="stylesheet" href="styles-v10.css?v=20260929-top100-lazy-v3">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">DROID / FULL DATASET CLASSIFICATION WORKSPACE</p>
+      <h1>전체 Scene / Object Setup 분류 결과</h1>
+    </div>
+    <div id="summaryStats" class="summary-stats" aria-label="검수 데이터 요약"></div>
+  </header>
+  <div class="full-run-status" role="status">
+    <strong>FULL DATASET RUN · COMPLETE</strong>
+    <span>74,896 Episodes · 전체 분류 및 검증 완료</span>
+  </div>
+
+  <nav class="view-tabs" aria-label="검수 화면">
+    <button class="tab is-active" type="button" data-view="groups">Scene</button>
+    <button class="tab" type="button" data-view="setups">Setup</button>
+    <button class="tab" type="button" data-view="sources">Source Scene</button>
+    <button class="tab" type="button" data-view="method">분류 기준</button>
+  </nav>
+
+  <main>
+    <section id="groupsView" class="view is-active">
+      <div class="toolbar">
+        <div><h2>물리 Scene 목록</h2><p id="groupCount" class="subtle"></p></div>
+        <div class="filters">
+          <label class="filter-field"><span>검색</span><input id="groupSearch" type="search" placeholder="Scene ID, 공간, Setup, Source Scene"></label>
+          <label class="filter-field"><span>Source Scene</span><select id="groupMergeFilter"><option value="all">전체</option><option value="merged">2개 이상 병합</option><option value="single">1개</option></select></label>
+          <label class="filter-field"><span>정렬</span><select id="groupSort"><option value="complexity">대표 복잡도 높은 순</option><option value="episodes">Episode 많은 순</option><option value="setups">Setup 많은 순</option><option value="sources">Source Scene 많은 순</option><option value="id">Scene ID 순</option></select></label>
+        </div>
+      </div>
+      <div id="groupSceneGrid" class="scene-feed-grid" aria-live="polite"></div>
+      <div id="groupPagination" class="pagination-slot"></div>
+    </section>
+
+    <section id="setupsView" class="view" hidden>
+      <div class="toolbar">
+        <div><h2>Setup 목록</h2><p id="setupCount" class="subtle"></p></div>
+        <div class="filters">
+          <label class="filter-field"><span>검색</span><input id="setupSearch" type="search" placeholder="Setup ID, Scene ID, object"></label>
+          <label class="filter-field"><span>정렬 / 묶음</span><select id="setupSort"><option value="complexity">대표 복잡도 높은 순</option><option value="source">Source Scene별 묶음</option><option value="episodes">Episode 많은 순</option><option value="scene">물리 Scene별</option><option value="id">Setup ID 순</option></select></label>
+        </div>
+      </div>
+      <div id="setupList" class="setup-list"></div>
+      <div id="setupPagination" class="pagination-slot"></div>
+    </section>
+
+    <section id="sourcesView" class="view source-provenance-view" hidden>
+      <header class="source-ledger-banner">
+        <div class="source-ledger-mark"><span>DROID</span><strong>RAW</strong></div>
+        <div><p>DROID DATASET PROVENANCE</p><h2>Source Scene 원본 계보</h2><span>물리 Scene과 object Setup으로 재분류하기 전 원본 UID 묶음</span></div>
+        <div class="source-lineage"><span>LAB</span><i>/</i><span>BUILDING</span><i>/</i><span>ROBOT</span><i>/</i><b>SOURCE UID</b></div>
+      </header>
+      <div class="toolbar source-toolbar">
+        <div><h2>원본 Source Scene 목록</h2><p id="sourceCount" class="subtle"></p></div>
+        <div class="filters">
+          <label class="filter-field"><span>검색</span><input id="sourceSearch" type="search" placeholder="Source Scene ID, Setup, object"></label>
+          <label class="filter-field"><span>Setup 분할</span><select id="sourceSplitFilter"><option value="all">전체</option><option value="split">2개 이상 Setup</option><option value="single">1개 Setup</option></select></label>
+          <label class="filter-field"><span>정렬</span><select id="sourceSort"><option value="complexity">대표 복잡도 높은 순</option><option value="episodes">Episode 많은 순</option><option value="setups">Setup 많은 순</option><option value="id">Source Scene ID 순</option></select></label>
+        </div>
+      </div>
+      <div id="sourceSceneGrid" class="source-scene-grid" aria-live="polite"></div>
+      <div id="sourcePagination" class="pagination-slot"></div>
+    </section>
+
+    <section id="methodView" class="view" hidden>
+      <div class="method-layout">
+        <div><h2>전체 분류 기준</h2><div id="methodContent"></div></div>
+        <aside class="run-panel"><h3>현재 데이터</h3><dl id="runStats"></dl></aside>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="detailDialog" class="detail-dialog">
+    <header class="detail-dialog-header">
+      <div class="dialog-title-block"><p id="dialogEyebrow" class="dialog-eyebrow"></p><h2 id="dialogTitle"></h2><code id="dialogKey"></code></div>
+      <div class="dialog-header-actions">
+        <button id="dialogBackButton" class="dialog-back-button" type="button" hidden><span aria-hidden="true">&larr;</span><b id="dialogBackLabel">이전 화면</b></button>
+        <button id="closeDetailDialog" class="icon-button" type="button" aria-label="상세 화면 닫기" title="닫기">&#10005;</button>
+      </div>
+    </header>
+    <div id="detailDialogBody" class="detail-dialog-body"></div>
+  </dialog>
+
+  <template id="loadingTemplate"><div class="loading">검수 데이터를 불러오는 중...</div></template>
+  <script src="app-v10.js?v=20260929-top100-lazy-v3"></script>
+</body>
+</html>
