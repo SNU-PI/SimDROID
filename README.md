@@ -49,20 +49,6 @@ is UDP). To re-open the scene without restarting, run
 
 Stop with `./scripts/docker/down.sh -g 0`.
 
-## Validate an Asset
-
-Create a physics-authored USD, fixed previews, collider overlay, and a single
-`PASS`/`REVIEW`/`FAIL` report:
-
-```bash
-./scripts/validate_asset.sh path/to/asset.blend validation-results/asset --gpu 0
-```
-
-Add `--graspable` for the Franka Panda 6 cm candidate grasp-width check, and
-use `--mass-kg` when measured mass is available. See
-[`docs/asset_validation.md`](docs/asset_validation.md) for outputs, checks, and
-the deliberately conservative handling of estimated physics values.
-
 ## Layout
 
 ```
@@ -73,7 +59,6 @@ scripts/
 └── build_alchera_real.py   assemble a scene.usda placed in the robot frame
 docker/               docker-compose.yml + web-viewer (WebRTC)
 docs/
-├── asset_validation.md       asset-to-physics USD validation pipeline
 ├── interactive_gui.md        browser GUI, live control, the teal-material gotcha
 └── polaris_reproduction.md   earlier PolaRiS real-to-sim eval reproduction
 ```
