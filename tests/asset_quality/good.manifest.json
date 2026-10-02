@@ -1,0 +1,26 @@
+{
+  "physics": {
+    "mass_kg": 0.22,
+    "static_friction": 0.65,
+    "dynamic_friction": 0.5,
+    "restitution": 0.03,
+    "collider_strategy": "primitive_compound",
+    "colliders": [
+      {
+        "shape": "box",
+        "center_m": [0.0, 0.0, 0.03],
+        "size_m": [0.05, 0.05, 0.06]
+      },
+      {
+        "shape": "box",
+        "center_m": [0.0, 0.0, 0.09],
+        "size_m": [0.05, 0.05, 0.06]
+      }
+    ]
+  },
+  "grasp": {
+    "axis": "y",
+    "width_m": 0.06,
+    "reviewed": true
+  }
+}

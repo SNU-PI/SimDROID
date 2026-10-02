@@ -6,6 +6,25 @@ Scene assets live on Hugging Face
 ([`Parkprogrammer/droid2sim`](https://huggingface.co/datasets/Parkprogrammer/droid2sim));
 this repo holds the code and Docker setup to run them.
 
+## Validate a Blender asset
+
+The asset-quality command runs Blender source checks, USD physics/grasp
+authoring, the official NVIDIA SimReady validator and FET001/FET003/FET005
+benchmarks, 3D-PAQA photorealism scoring, and DROID scale/Robotiq 2F-85 checks.
+It writes one `report.json` plus an HTML evidence report:
+
+```bash
+./scripts/validate_asset_quality.sh asset.blend \
+  --out runs/asset_quality/asset \
+  --category cup \
+  --manifest asset.manifest.json \
+  --source-image droid_frame.png \
+  --gpu 0
+```
+
+See [`docs/asset_quality_pipeline.md`](docs/asset_quality_pipeline.md) for the
+one-time 3D-PAQA setup and output contract.
+
 ## Reproduce
 
 ```bash

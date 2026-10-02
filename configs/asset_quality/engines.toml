@@ -1,0 +1,5 @@
+[kit.isaac_sim]
+executable_path = "/isaac-sim/kit/kit"
+tags = ["isaac", "kit"]
+runtime = "PhysX"
+experience = "/isaac-sim/apps/isaacsim.exp.base.python.kit"
