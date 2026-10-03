@@ -25,7 +25,17 @@ def main():
     args = parse_args()
     materials_path = args.package / "payloads" / "materials.usda"
     if not materials_path.exists():
-        raise SystemExit("materials layer not found: %s" % materials_path)
+        report = {
+            "stage": "simready_package",
+            "status": "PASS",
+            "materials_layer": None,
+            "bundled_mdl": None,
+            "rewritten_attributes": [],
+            "message": "asset has no routed material layer",
+        }
+        args.report.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(json.dumps(report, indent=2))
+        return
     if not args.gltf_mdl.exists():
         raise SystemExit("Isaac glTF MDL not found: %s" % args.gltf_mdl)
 

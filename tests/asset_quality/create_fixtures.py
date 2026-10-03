@@ -56,6 +56,7 @@ def good_fixture(path):
     principled.inputs["Roughness"].default_value = 0.45
     material.node_tree.links.new(texture.outputs["Color"], principled.inputs["Base Color"])
     obj.data.materials.append(material)
+    bpy.data.materials.new("unused_orphan_material")
 
     bpy.context.view_layer.objects.active = obj
     bpy.ops.rigidbody.object_add()

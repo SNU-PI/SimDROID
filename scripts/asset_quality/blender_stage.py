@@ -224,7 +224,17 @@ def main():
         raise RuntimeError("blend file has no renderable mesh objects")
 
     mesh_data = [mesh_report(obj) for obj in meshes]
-    materials = [material_report(material) for material in bpy.data.materials]
+    # Orphaned materials do not affect the exported asset and must not dilute
+    # texture/PBR coverage. Inspect only slots used by renderable mesh objects.
+    used_materials = []
+    seen_materials = set()
+    for obj in meshes:
+        for slot in obj.material_slots:
+            material = slot.material
+            if material and material.name not in seen_materials:
+                used_materials.append(material)
+                seen_materials.add(material.name)
+    materials = [material_report(material) for material in used_materials]
     minimum, maximum = world_bounds(meshes)
     dimensions = maximum - minimum
     checks = []

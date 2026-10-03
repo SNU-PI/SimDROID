@@ -3,6 +3,9 @@
 
 import argparse
 import asyncio
+import os
+import sys
+import traceback
 
 from isaacsim import SimulationApp
 
@@ -38,8 +41,21 @@ def main():
                 raise RuntimeError(task.get_error_message() or str(task.get_status()))
 
         asyncio.get_event_loop().run_until_complete(convert())
-    finally:
-        app.close()
+    except BaseException:
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        # A nonzero fast-shutdown exits before Kit's teardown path.
+        app.close(wait_for_replicator=False, skip_cleanup=True, exit_code=1)
+        raise
+    else:
+        # The converter task has flushed the USD before reporting completion.
+        # Isaac Sim 6.0.1 can abort while tearing down its asset-converter
+        # TaskGroup even through close(skip_cleanup=True), so this one-shot
+        # container exits directly after flushing process output.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
 
 
 if __name__ == "__main__":
